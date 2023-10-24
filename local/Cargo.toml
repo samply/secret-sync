@@ -1,0 +1,12 @@
+[package]
+name = "local"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+beam-lib = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+once_cell = { workspace = true }
+shared = { workspace = true }
