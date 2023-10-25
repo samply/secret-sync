@@ -4,7 +4,7 @@ use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskRe
 use clap::Parser;
 use config::Config;
 use once_cell::sync::Lazy;
-use shared::SecretRequest;
+use shared::{SecretRequest, SecretResult, SecretRequestType};
 
 mod config;
 
@@ -25,11 +25,13 @@ async fn main() {
     // TODO: Remove once feature/stream-tasks is merged
     let mut seen = HashSet::new();
     let block_one = BlockingOptions::from_count(1);
+    // TODO: Fast shutdown
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
             Ok(tasks) => tasks.into_iter().for_each(|task| {
                 if !seen.contains(&task.id) {
                     seen.insert(task.id);
+                    println!("Generating secrets for {}", task.from);
                     tokio::spawn(handle_task(task));
                 }
             }),
@@ -42,14 +44,14 @@ async fn main() {
             }
             Err(e) => {
                 eprintln!("Error during task polling {e}");
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
     }
 }
 
-pub async fn handle_task(task: TaskRequest<Vec<SecretRequest>>) {
-    let results = futures::future::join_all(task.body.into_iter().map(handle_secret_request)).await;
+pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
+    let results = futures::future::join_all(task.body.into_iter().map(handle_secret_task)).await;
     let result = BEAM_CLIENT.put_result(
         &TaskResult {
             from: CONFIG.beam_id.clone(),
@@ -67,12 +69,26 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequest>>) {
     }
 }
 
-pub async fn handle_secret_request(request: SecretRequest) -> Result<String, String> { // maybe use anyhow
+pub async fn handle_secret_task(task: SecretRequestType) -> Result<SecretResult, String> {
+    match task {
+        SecretRequestType::ValidateOrCreate { current, request } if is_validate_secret(&current, &request).await? => Ok(SecretResult::AlreadyValid),
+        SecretRequestType::ValidateOrCreate { request, .. } |
+        SecretRequestType::Create(request) => create_secret(&request).await.map(SecretResult::Created),
+    }
+}
+
+pub async fn create_secret(request: &SecretRequest) -> Result<String, String> {
     match request {
         SecretRequest::KeyCloak { args } => {
             let url = CONFIG.keycloak_url.join("/whatever").unwrap();
             CLIENT.post(url);
             todo!()
         }
+    }
+}
+
+pub async fn is_validate_secret(current: &str, request: &SecretRequest) -> Result<bool, String> {
+    match request {
+        SecretRequest::KeyCloak { args } => todo!("Validate if current was already created"),
     }
 }

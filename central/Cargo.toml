@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 beam-lib = { workspace = true }
 clap = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features= ["signal"] }
 once_cell = { workspace = true }
 shared = { workspace = true }
 futures = "0.3"

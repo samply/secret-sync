@@ -1,0 +1,57 @@
+version: "3"
+
+services:
+  local:
+    build:
+      context: ../
+      dockerfile: Dockerfile.local
+    image: samply/secret-sync-local:latest
+    environment:
+      - PROXY_ID=proxy1.broker
+      - CENTRAL_BEAM_ID=app2.proxy2.broker
+      - BROKER_URL=http://broker:8080
+    volumes:
+      # Path can be configuard via CACHE_PATH this container path is the default
+      - ./cache/cache.txt:/usr/local/central_auth.txt
+    extra_hosts:
+      - "broker:${BROKER_IP}"
+    secrets:
+      - privkey.pem
+      - root.crt.pem
+    command: ["keycloak:foo:bar",]
+
+  central:
+    build:
+      context: ../
+      dockerfile: Dockerfile.central
+    image: samply/secret-sync-central:latest
+    environment:
+      - BEAM_URL=http://proxy:8082
+      - BEAM_ID=app2.proxy2.broker
+      - BEAM_SECRET=App1Secret
+    extra_hosts:
+      - "proxy:${PROXY_IP}"
+# beam-proxy:
+#     image: docker.verbis.dkfz.de/cache/samply/beam-proxy:develop
+#     container_name: bridgehead-beam-proxy
+#     environment:
+#       BROKER_URL: ${BROKER_URL}
+#       PROXY_ID: ${PROXY_ID}
+#       APP_focus_KEY: ${FOCUS_BEAM_SECRET_SHORT}
+#       PRIVKEY_FILE: /run/secrets/proxy.pem
+#       ALL_PROXY: http://forward_proxy:3128
+#       TLS_CA_CERTIFICATES_DIR: /conf/trusted-ca-certs
+#       ROOTCERT_FILE: /conf/root.crt.pem
+#     secrets:
+#       - proxy.pem
+#     depends_on:
+#       - "forward_proxy"
+#     volumes:
+#       - /etc/bridgehead/trusted-ca-certs:/conf/trusted-ca-certs:ro
+#       - /srv/docker/bridgehead/ccp/root.crt.pem:/conf/root.crt.pem:ro
+
+secrets:
+  privkey.pem:
+    file: ${BEAM_DIR}/dev/pki/proxy1.priv.pem
+  root.crt.pem:
+    file: ${BEAM_DIR}/dev/pki/root.crt.pem

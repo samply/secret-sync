@@ -21,7 +21,7 @@ impl FromStr for SecretArg {
 
     /// keyloak:KEYCLOAK_TEILER_SECRET:$SITE_ID-teiler,...
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let [secret_type, name, args] = s.splitn(2, ':').collect::<Vec<_>>()[..] else {
+        let [secret_type, name, args] = s.splitn(3, ':').collect::<Vec<_>>()[..] else {
             return Err(format!("'{s}' is not a valid secret specifier. Syntax is <secret_type>:<OUTPUT_VAR_NAME>:<args>"));
         };
 
@@ -33,4 +33,19 @@ impl FromStr for SecretArg {
 
         Ok(SecretArg { name: name.to_string(), request })
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SecretResult {
+    AlreadyValid,
+    Created(String),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SecretRequestType {
+    ValidateOrCreate {
+        current: String,
+        request: SecretRequest
+    },
+    Create(SecretRequest)
 }
