@@ -22,7 +22,7 @@ pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
 #[tokio::main]
 async fn main() {
-    // TODO: Remove once feature/stream-tasks is merged
+    // TODO: Remove once beam feature/stream-tasks is merged
     let mut seen = HashSet::new();
     let block_one = BlockingOptions::from_count(1);
     // TODO: Fast shutdown
@@ -71,24 +71,28 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
 
 pub async fn handle_secret_task(task: SecretRequestType) -> Result<SecretResult, String> {
     match task {
-        SecretRequestType::ValidateOrCreate { current, request } if is_validate_secret(&current, &request).await? => Ok(SecretResult::AlreadyValid),
+        SecretRequestType::ValidateOrCreate { current, request } if is_valid_secret(&current, &request).await? => Ok(SecretResult::AlreadyValid),
         SecretRequestType::ValidateOrCreate { request, .. } |
-        SecretRequestType::Create(request) => create_secret(&request).await.map(SecretResult::Created),
+        SecretRequestType::Create(request) => create_secret(request).await.map(SecretResult::Created),
     }
 }
 
-pub async fn create_secret(request: &SecretRequest) -> Result<String, String> {
+pub async fn create_secret(request: SecretRequest) -> Result<String, String> {
     match request {
         SecretRequest::KeyCloak { args } => {
             let url = CONFIG.keycloak_url.join("/whatever").unwrap();
-            CLIENT.post(url);
-            todo!()
+            // CLIENT.post(url);
+            // todo!();
+            Ok(args)
         }
     }
 }
 
-pub async fn is_validate_secret(current: &str, request: &SecretRequest) -> Result<bool, String> {
+pub async fn is_valid_secret(current: &str, request: &SecretRequest) -> Result<bool, String> {
     match request {
-        SecretRequest::KeyCloak { args } => todo!("Validate if current was already created"),
+        SecretRequest::KeyCloak { args } => {
+            // todo!("Validate if current was already created")
+            Ok(true)
+        },
     }
 }

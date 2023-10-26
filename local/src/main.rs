@@ -95,8 +95,8 @@ async fn wait_for_beam_proxy() -> beam_lib::Result<()> {
         match reqwest::get(format!("{BEAM_PROXY_URL}/v1/health")).await {
             Ok(res) if res.status() == StatusCode::OK => return Ok(()),
             _ if tries <= MAX_RETRIRES => tries += 1,
-            Err(e) => break Err(e.into()),
-            Ok(res) => break Err(beam_lib::BeamError::Other(format!("Proxy reachable but failed to start {}", res.status()).into()))
+            Err(e) => return Err(e.into()),
+            Ok(res) => return Err(beam_lib::BeamError::Other(format!("Proxy reachable but failed to start {}", res.status()).into()))
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }

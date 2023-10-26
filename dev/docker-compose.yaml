@@ -12,13 +12,13 @@ services:
       - BROKER_URL=http://broker:8080
     volumes:
       # Path can be configuard via CACHE_PATH this container path is the default
-      - ./cache/cache.txt:/usr/local/central_auth.txt
+      - ${CACHE_PATH}:/usr/local/central_auth.txt
     extra_hosts:
       - "broker:${BROKER_IP}"
     secrets:
       - privkey.pem
       - root.crt.pem
-    command: ["keycloak:foo:bar",]
+    command: "${COMMAND}"
 
   central:
     build:

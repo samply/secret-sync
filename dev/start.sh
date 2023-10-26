@@ -26,7 +26,21 @@ export BEAM_DIR=../../beam
 echo "Broker running on $BROKER_IP"
 echo "Proxy for central running on $PROXY_IP"
 
+
+export CACHE_PATH=${CACHE_PATH:-"./cache/cache.txt"}
+
+if [ ! -f "$CACHE_PATH" ]; then
+    mkdir -p $(dirname "$CACHE_PATH")
+    touch "$CACHE_PATH"
+fi
+
+compose_arg=""
+if [ "$1" = "-b" ]; then
+    compose_arg="--build"
+    shift
+fi
+
 export COMMAND=$@
 echo "Args: $COMMAND"
 
-docker compose down && docker compose up --build
+docker compose down && docker compose up $compose_arg
