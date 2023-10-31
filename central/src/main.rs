@@ -1,12 +1,13 @@
 use std::{collections::HashSet, time::Duration};
 
-use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskResult};
+use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskResult, AppId};
 use clap::Parser;
-use config::Config;
+use config::{Config, OIDCProvider};
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
 
 mod config;
+mod keycloak;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -17,6 +18,8 @@ pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
         CONFIG.beam_url.clone(),
     )
 });
+
+pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
@@ -31,7 +34,6 @@ async fn main() {
             Ok(tasks) => tasks.into_iter().for_each(|task| {
                 if !seen.contains(&task.id) {
                     seen.insert(task.id);
-                    println!("Generating secrets for {}", task.from);
                     tokio::spawn(handle_task(task));
                 }
             }),
@@ -51,11 +53,12 @@ async fn main() {
 }
 
 pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
-    let results = futures::future::join_all(task.body.into_iter().map(handle_secret_task)).await;
+    let from = task.from;
+    let results = futures::future::join_all(task.body.into_iter().map(|t| handle_secret_task(t, &from))).await;
     let result = BEAM_CLIENT.put_result(
         &TaskResult {
             from: CONFIG.beam_id.clone(),
-            to: vec![task.from],
+            to: vec![from],
             task: task.id,
             status: beam_lib::WorkStatus::Succeeded,
             body: results,
@@ -69,30 +72,32 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
     }
 }
 
-pub async fn handle_secret_task(task: SecretRequestType) -> Result<SecretResult, String> {
+pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result<SecretResult, String> {
+    let name = from.as_ref().splitn(3, '.').nth(1).unwrap();
+    println!("Working on secret task {task:?} from {from}");
     match task {
-        SecretRequestType::ValidateOrCreate { current, request } if is_valid_secret(&current, &request).await? => Ok(SecretResult::AlreadyValid),
+        // SecretRequestType::ValidateOrCreate { current, request } if is_valid_secret(&current, &request, name).await? => Ok(SecretResult::AlreadyValid),
         SecretRequestType::ValidateOrCreate { request, .. } |
-        SecretRequestType::Create(request) => create_secret(request).await.map(SecretResult::Created),
+        SecretRequestType::Create(request) => create_secret(request, name).await,
     }
 }
 
-pub async fn create_secret(request: SecretRequest) -> Result<String, String> {
+pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretResult, String> {
     match request {
-        SecretRequest::KeyCloak { args } => {
-            let url = CONFIG.keycloak_url.join("/whatever").unwrap();
-            // CLIENT.post(url);
-            // todo!();
-            Ok(args)
+        SecretRequest::OpenIdConnect { redirect_urls } => {
+            let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
+                return Err("No OIDC provider configuard!".into());
+            };
+            oidc_provider.create_client(name, redirect_urls).await
         }
     }
 }
 
-pub async fn is_valid_secret(current: &str, request: &SecretRequest) -> Result<bool, String> {
-    match request {
-        SecretRequest::KeyCloak { args } => {
-            // todo!("Validate if current was already created")
-            Ok(true)
-        },
-    }
-}
+// pub async fn is_valid_secret(current: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
+//     match request {
+//         SecretRequest::OpenIdConnect { redirect_urls } => {
+//             // todo!("Validate if current was already created")
+//             Ok(false)
+//         },
+//     }
+// }

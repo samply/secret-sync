@@ -40,7 +40,22 @@ if [ "$1" = "-b" ]; then
     shift
 fi
 
-export COMMAND=$@
-echo "Args: $COMMAND"
+args="OIDC:test:http://foo.com,http://bar.com"
+# first=true
+# delimiter=$'\x1E'
+# # https://unix.stackexchange.com/a/460466
+# for var in "${!SECRET_@}"; do
+#     if $first; then
+#         args+="keycloak:${var#SECRET_}:${!var}"
+#         first=false
+#     else
+#         args+="${delimiter}keycloak:${var#SECRET_}:${!var}"
+#     fi
+#     echo "#"
+# done
+
+echo "Args: $args"
+
+export ARGS=$args
 
 docker compose down && docker compose up $compose_arg

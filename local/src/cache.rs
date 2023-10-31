@@ -18,7 +18,6 @@ impl DerefMut for Cache {
 
 impl Cache {
     pub fn open(path: impl AsRef<Path>) -> Cache {
-        // TODO: Handle the docker mount case where it mounts a directory if the file is not present
         let Ok(file) = fs::read_to_string(path) else {
             eprintln!("Cached secrets not found creating");
             return Self(HashMap::new());

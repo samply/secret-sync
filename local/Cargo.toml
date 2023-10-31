@@ -10,3 +10,4 @@ clap = { workspace = true }
 tokio = { workspace = true }
 once_cell = { workspace = true }
 shared = { workspace = true }
+futures = { workspace = true }

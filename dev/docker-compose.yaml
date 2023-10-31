@@ -8,17 +8,17 @@ services:
     image: samply/secret-sync-local:latest
     environment:
       - PROXY_ID=proxy1.broker
-      - CENTRAL_BEAM_ID=app2.proxy2.broker
+      - OIDC_PROVIDER=app2.proxy2.broker
       - BROKER_URL=http://broker:8080
+      - SECRET_DEFINITIONS=${ARGS}
     volumes:
       # Path can be configuard via CACHE_PATH this container path is the default
-      - ${CACHE_PATH}:/usr/local/central_auth.txt
+      - ${CACHE_PATH}:/usr/local/cache
     extra_hosts:
       - "broker:${BROKER_IP}"
     secrets:
       - privkey.pem
       - root.crt.pem
-    command: "${COMMAND}"
 
   central:
     build:
@@ -29,26 +29,20 @@ services:
       - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
       - BEAM_SECRET=App1Secret
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_ID=admin
+      - KEYCLOAK_SECRET=admin
     extra_hosts:
       - "proxy:${PROXY_IP}"
-# beam-proxy:
-#     image: docker.verbis.dkfz.de/cache/samply/beam-proxy:develop
-#     container_name: bridgehead-beam-proxy
-#     environment:
-#       BROKER_URL: ${BROKER_URL}
-#       PROXY_ID: ${PROXY_ID}
-#       APP_focus_KEY: ${FOCUS_BEAM_SECRET_SHORT}
-#       PRIVKEY_FILE: /run/secrets/proxy.pem
-#       ALL_PROXY: http://forward_proxy:3128
-#       TLS_CA_CERTIFICATES_DIR: /conf/trusted-ca-certs
-#       ROOTCERT_FILE: /conf/root.crt.pem
-#     secrets:
-#       - proxy.pem
-#     depends_on:
-#       - "forward_proxy"
-#     volumes:
-#       - /etc/bridgehead/trusted-ca-certs:/conf/trusted-ca-certs:ro
-#       - /srv/docker/bridgehead/ccp/root.crt.pem:/conf/root.crt.pem:ro
+    
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    ports:
+      - "1337:8080"
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
 
 secrets:
   privkey.pem:
