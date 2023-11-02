@@ -25,15 +25,36 @@ async fn get_access_token(conf: &KeyCloakConfig) -> Result<String> {
     struct Token {
         access_token: String,
     }
+    dbg!(CLIENT
+            .post(&format!(
+                "{}/realms/{}/protocol/openid-connect/token",
+                conf.keycloak_url, conf.keycloak_realm
+            ))
+            .form(&json!({
+                "client_id": conf.keycloak_id,
+                "client_secret":  conf.keycloak_secret,
+                "grant_type": "client_credentials"
+            }))
+            .send()
+            .await?)
+        .json::<Token>()
+        .await
+        .map(|t| t.access_token)
+}
+
+#[cfg(test)]
+async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> Result<String> {
+    #[derive(serde::Deserialize)]
+    struct Token {
+        access_token: String,
+    }
     CLIENT
         .post(&format!(
             "{}/realms/{}/protocol/openid-connect/token",
             conf.keycloak_url, conf.keycloak_realm
         ))
-        // TODO: Change to conf.keycloak_id and conf.keyclaok_secret
         .form(&json!({
             "client_id": "admin-cli",
-            // "client_secret":  "admin",
             "username": "admin",
             "password": "admin",
             "grant_type": "password"
@@ -53,7 +74,7 @@ async fn test_create_client() -> Result<()> {
         keycloak_secret: "".to_owned(),
         keycloak_realm: "master".to_owned(),
     };
-    let token = get_access_token(&conf).await?;
+    let token = get_access_token_via_admin_login(&conf).await?;
     dbg!(post_client(&token, "test", vec!["http://test.bk".into()], &conf).await?);
     Ok(())
 }
