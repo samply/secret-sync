@@ -48,7 +48,7 @@ async fn get_access_token(conf: &KeyCloakConfig) -> Result<String> {
 #[tokio::test]
 async fn test_create_client() -> Result<()> {
     let conf = KeyCloakConfig {
-        keycloak_url: "http:localhost:1337".parse().unwrap(),
+        keycloak_url: "http://localhost:1337".parse().unwrap(),
         keycloak_id: "".to_owned(),
         keycloak_secret: "".to_owned(),
         keycloak_realm: "master".to_owned(),
@@ -87,6 +87,17 @@ async fn post_client(
                 "microprofile-jwt",
                 "groups"
             ],
+            "protocolMappers": [{
+                "name": format!("aud-mapper-{name}"),
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-audience-mapper",
+                "consentRequired": false,
+                "config": {
+                    "included.client.audience": name,
+                    "id.token.claim": "true",
+                    "access.token.claim": "true"
+                }
+            }]
         }))
         .send()
         .await?;
