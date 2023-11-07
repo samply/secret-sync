@@ -53,9 +53,6 @@ impl FromStr for SecretArg {
         // Add new `SecretRequest` variants here
         let request = match secret_type {
             "OIDC" => {
-                // if CONFIG.oidc_provieder.is_none() {
-                //     return Err("Can not create OIDC client without the 'OIDC_PROVIDER' config option!".into());
-                // }
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
                 Ok(SecretRequest::OpenIdConnect { redirect_urls })
             },

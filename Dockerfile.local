@@ -19,5 +19,5 @@ COPY --from=proxy /usr/local/bin/beam /usr/local/bin/proxy
 COPY --from=builder /app/target/release/local /usr/local/bin/
 
 ENV APP_secret-sync_KEY=NotSecret
+ENV RUST_LOG=warn
 ENTRYPOINT ["sh", "-c", "/usr/local/bin/proxy & /usr/local/bin/local $@", "_"]
-# ENTRYPOINT [ "tail", "-f", "/dev/null" ]

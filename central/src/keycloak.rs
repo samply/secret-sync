@@ -25,18 +25,18 @@ async fn get_access_token(conf: &KeyCloakConfig) -> Result<String> {
     struct Token {
         access_token: String,
     }
-    dbg!(CLIENT
-            .post(&format!(
-                "{}/realms/{}/protocol/openid-connect/token",
-                conf.keycloak_url, conf.keycloak_realm
-            ))
-            .form(&json!({
-                "client_id": conf.keycloak_id,
-                "client_secret":  conf.keycloak_secret,
-                "grant_type": "client_credentials"
-            }))
-            .send()
-            .await?)
+    CLIENT
+        .post(&format!(
+            "{}/realms/{}/protocol/openid-connect/token",
+            conf.keycloak_url, conf.keycloak_realm
+        ))
+        .form(&json!({
+            "client_id": conf.keycloak_id,
+            "client_secret":  conf.keycloak_secret,
+            "grant_type": "client_credentials"
+        }))
+        .send()
+        .await?
         .json::<Token>()
         .await
         .map(|t| t.access_token)
@@ -66,6 +66,20 @@ async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> Result<Strin
         .map(|t| t.access_token)
 }
 
+#[cfg(test)]
+async fn get_client(id: &str, token: &str, conf: &KeyCloakConfig) -> Result<serde_json::Value> {
+    dbg!(CLIENT
+            .get(&format!(
+                "{}/admin/realms/{}/clients/{id}",
+                conf.keycloak_url, conf.keycloak_realm
+            ))
+            .bearer_auth(token)
+            .send()
+            .await?)
+        .json()
+        .await
+}
+
 #[tokio::test]
 async fn test_create_client() -> Result<()> {
     let conf = KeyCloakConfig {
@@ -76,6 +90,7 @@ async fn test_create_client() -> Result<()> {
     };
     let token = get_access_token_via_admin_login(&conf).await?;
     dbg!(post_client(&token, "test", vec!["http://test.bk".into()], &conf).await?);
+    dbg!(get_client("test", &token, &conf).await.unwrap());
     Ok(())
 }
 
@@ -125,7 +140,7 @@ async fn post_client(
     match res.status() {
         StatusCode::CREATED => Ok(SecretResult::Created(secret)),
         StatusCode::CONFLICT => Ok(SecretResult::AlreadyValid),
-        s => unreachable!("Unexpected statuscode {s} while creating keycloak client")
+        s => unreachable!("Unexpected statuscode {s} while creating keycloak client"),
     }
 }
 
@@ -152,3 +167,10 @@ pub async fn create_client(
 ) -> Result<SecretResult> {
     post_client(&get_access_token(conf).await?, name, redirect_urls, conf).await
 }
+
+///         
+/// pw set? validate?
+/// pw create but what if it already exists?
+///
+///
+mod asdf {}
