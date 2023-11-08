@@ -223,10 +223,3 @@ pub async fn create_client(
     let token = get_access_token(conf).await?;
     post_client(&token, name, redirect_urls, conf).await
 }
-
-///         
-/// pw set? validate?
-/// pw create but what if it already exists?
-///
-///
-mod asdf {}
