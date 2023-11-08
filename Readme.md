@@ -26,7 +26,7 @@ services:
     volumes:
       # Path can be configuard via CACHE_PATH this container path is the default
       - ${CACHE_PATH}:/usr/local/cache
-    # Used for the embeded beam proxy
+    # Used for the embedded beam proxy
     secrets:
       - privkey.pem
       - root.crt.pem
@@ -65,7 +65,7 @@ services:
 Register an Open ID Connect client at the central half of this component.
 
 Secret type: `OIDC`  
-Arguments: A comma seperated list of urls permitted for redirection  
+Arguments: A comma separated list of urls permitted for redirection  
 
 Example:
 `OIDC:MY_OIDC_CLIENT_SECRET:https://foo.com,https://bar.com`

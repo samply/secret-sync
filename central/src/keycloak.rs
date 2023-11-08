@@ -1,7 +1,7 @@
 use crate::CLIENT;
-use beam_lib::reqwest::{Result, Url, StatusCode};
+use beam_lib::reqwest::{self, StatusCode, Url};
 use clap::Parser;
-use serde_json::json;
+use serde_json::{json, Value};
 use shared::SecretResult;
 
 #[derive(Debug, Parser, Clone)]
@@ -20,7 +20,7 @@ pub struct KeyCloakConfig {
     pub keycloak_realm: String,
 }
 
-async fn get_access_token(conf: &KeyCloakConfig) -> Result<String> {
+async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
     #[derive(serde::Deserialize)]
     struct Token {
         access_token: String,
@@ -43,7 +43,7 @@ async fn get_access_token(conf: &KeyCloakConfig) -> Result<String> {
 }
 
 #[cfg(test)]
-async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> Result<String> {
+async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> reqwest::Result<String> {
     #[derive(serde::Deserialize)]
     struct Token {
         access_token: String,
@@ -66,22 +66,78 @@ async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> Result<Strin
         .map(|t| t.access_token)
 }
 
-#[cfg(test)]
-async fn get_client(id: &str, token: &str, conf: &KeyCloakConfig) -> Result<serde_json::Value> {
-    dbg!(CLIENT
-            .get(&format!(
-                "{}/admin/realms/{}/clients/{id}",
-                conf.keycloak_url, conf.keycloak_realm
-            ))
-            .bearer_auth(token)
-            .send()
-            .await?)
+async fn get_client(
+    id: &str,
+    token: &str,
+    conf: &KeyCloakConfig,
+) -> reqwest::Result<serde_json::Value> {
+    CLIENT
+        .get(&format!(
+            "{}/admin/realms/{}/clients/{id}",
+            conf.keycloak_url, conf.keycloak_realm
+        ))
+        .bearer_auth(token)
+        .send()
+        .await?
         .json()
         .await
 }
 
+pub async fn validate_client(
+    id: &str,
+    redirect_urls: &[String],
+    secret: &str,
+    conf: &KeyCloakConfig,
+) -> reqwest::Result<bool> {
+    let token = get_access_token(conf).await?;
+    let client = get_client(id, &token, conf).await?;
+    let wanted_client = generate_client(id, redirect_urls, secret);
+    Ok(client_configs_match(&client, &wanted_client))
+}
+
+fn client_configs_match(a: &Value, b: &Value) -> bool {
+    assert_json_diff::assert_json_matches_no_panic(
+        &a,
+        &b,
+        assert_json_diff::Config::new(assert_json_diff::CompareMode::Inclusive)
+    )
+    .map_err(|e| eprintln!("Clients did not match: {e}"))
+    .is_ok()
+}
+
+fn generate_client(name: &str, redirect_urls: &[String], secret: &str) -> Value {
+    json!({
+        "name": name,
+        "id": name,
+        "clientId": name,
+        "redirectUris": redirect_urls,
+        "secret": secret,
+        "publicClient": false,
+        "defaultClientScopes": [
+            "web-origins",
+            "acr",
+            "profile",
+            "roles",
+            "email",
+            "microprofile-jwt",
+            "groups"
+        ],
+        "protocolMappers": [{
+            "name": format!("aud-mapper-{name}"),
+            "protocol": "openid-connect",
+            "protocolMapper": "oidc-audience-mapper",
+            "consentRequired": false,
+            "config": {
+                "included.client.audience": name,
+                "id.token.claim": "true",
+                "access.token.claim": "true"
+            }
+        }]
+    })
+}
+
 #[tokio::test]
-async fn test_create_client() -> Result<()> {
+async fn test_create_client() -> reqwest::Result<()> {
     let conf = KeyCloakConfig {
         keycloak_url: "http://localhost:1337".parse().unwrap(),
         keycloak_id: "".to_owned(),
@@ -99,47 +155,46 @@ async fn post_client(
     name: &str,
     redirect_urls: Vec<String>,
     conf: &KeyCloakConfig,
-) -> Result<SecretResult> {
+) -> reqwest::Result<SecretResult> {
     let secret = generate_secret();
+    let generated_client = generate_client(name, &redirect_urls, &secret);
     let res = CLIENT
         .post(&format!(
             "{}/admin/realms/{}/clients",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
-        .json(&json!({
-            "name": name,
-            "id": name,
-            "clientId": name,
-            "redirectUris": redirect_urls,
-            "secret": secret,
-            "publicClient": false,
-            "defaultClientScopes": [
-                "web-origins",
-                "acr",
-                "profile",
-                "roles",
-                "email",
-                "microprofile-jwt",
-                "groups"
-            ],
-            "protocolMappers": [{
-                "name": format!("aud-mapper-{name}"),
-                "protocol": "openid-connect",
-                "protocolMapper": "oidc-audience-mapper",
-                "consentRequired": false,
-                "config": {
-                    "included.client.audience": name,
-                    "id.token.claim": "true",
-                    "access.token.claim": "true"
-                }
-            }]
-        }))
+        .json(&generated_client)
         .send()
         .await?;
     match res.status() {
         StatusCode::CREATED => Ok(SecretResult::Created(secret)),
-        StatusCode::CONFLICT => Ok(SecretResult::AlreadyValid),
+        StatusCode::CONFLICT => {
+            let conflicting_client = get_client(name, token, conf).await?;
+            if client_configs_match(&conflicting_client, &generated_client) {
+                Ok(conflicting_client
+                    .as_object()
+                    .and_then(|o| o.get("secret"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| SecretResult::AlreadyExisted(v.into()))
+                    .expect("These values should have a secret"))
+            } else {
+                Ok(CLIENT
+                    .put(&format!(
+                        "{}/admin/realms/{}/clients",
+                        conf.keycloak_url, conf.keycloak_realm
+                    ))
+                    .bearer_auth(token)
+                    .json(&generated_client)
+                    .send()
+                    .await?
+                    .status()
+                    .is_success()
+                    .then_some(secret)
+                    .map(SecretResult::Created)
+                    .expect("Put should be successfull"))
+            }
+        }
         s => unreachable!("Unexpected statuscode {s} while creating keycloak client"),
     }
 }
@@ -164,8 +219,9 @@ pub async fn create_client(
     name: &str,
     redirect_urls: Vec<String>,
     conf: &KeyCloakConfig,
-) -> Result<SecretResult> {
-    post_client(&get_access_token(conf).await?, name, redirect_urls, conf).await
+) -> reqwest::Result<SecretResult> {
+    let token = get_access_token(conf).await?;
+    post_client(&token, name, redirect_urls, conf).await
 }
 
 ///         

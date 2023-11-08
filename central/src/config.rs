@@ -44,4 +44,17 @@ impl OIDCProvider {
             "Error creating OIDC client".into()
         })
     }
+
+    pub async fn validate_client(&self, name: &str, secret: &str, redirect_urls: &[String]) -> Result<bool, String> {
+        match self {
+            OIDCProvider::Keycloak(conf) => {
+                keycloak::validate_client(name, redirect_urls, secret, conf)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Failed to validate client {name}: {e}");
+                        "Failed to validate client. See upstrean logs.".into()
+                    })
+            },
+        }
+    }
 }

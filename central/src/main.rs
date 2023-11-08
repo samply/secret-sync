@@ -76,7 +76,7 @@ pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result
     let name = from.as_ref().splitn(3, '.').nth(1).unwrap();
     println!("Working on secret task {task:?} from {from}");
     match task {
-        // SecretRequestType::ValidateOrCreate { current, request } if is_valid_secret(&current, &request, name).await? => Ok(SecretResult::AlreadyValid),
+        SecretRequestType::ValidateOrCreate { current, request } if is_valid(&current, &request, name).await? => Ok(SecretResult::AlreadyValid),
         SecretRequestType::ValidateOrCreate { request, .. } |
         SecretRequestType::Create(request) => create_secret(request, name).await,
     }
@@ -86,18 +86,20 @@ pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretR
     match request {
         SecretRequest::OpenIdConnect { redirect_urls } => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
-                return Err("No OIDC provider configuard!".into());
+                return Err("No OIDC provider configured!".into());
             };
             oidc_provider.create_client(name, redirect_urls).await
         }
     }
 }
 
-// pub async fn is_valid_secret(current: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
-//     match request {
-//         SecretRequest::OpenIdConnect { redirect_urls } => {
-//             // todo!("Validate if current was already created")
-//             Ok(false)
-//         },
-//     }
-// }
+pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
+    match request {
+        SecretRequest::OpenIdConnect { redirect_urls } => {
+            let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
+                return Err("No OIDC provider configured!".into());
+            };
+            oidc_provider.validate_client(name, secret, redirect_urls).await
+        },
+    }
+}

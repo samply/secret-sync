@@ -65,6 +65,10 @@ async fn main() -> ExitCode {
             Ok(SecretResult::Created(new_value)) => {
                 println!("{name} has been created");
                 cache.entry(name.clone()).or_insert(new_value);
+            },
+            Ok(SecretResult::AlreadyExisted(secret)) => {
+                println!("{name} already existed but was not cached");
+                cache.entry(name.clone()).or_insert(secret);
             }
             Err(e) => {
                 exit_code = ExitCode::FAILURE;
@@ -83,7 +87,7 @@ async fn send_secret_request(
 ) -> beam_lib::Result<Vec<Result<SecretResult, String>>> {
     wait_for_beam_proxy().await?;
     let mut tasks = Vec::with_capacity(secret_tasks.len());
-    // Partion tasks based on task type to send them to the correct app to fulfill the task
+    // Partition tasks based on task type to send them to the correct app to fulfill the task
     let (oidc, rest) = secret_tasks
         .into_iter()
         .partition(|v| matches!(v.deref(), SecretRequest::OpenIdConnect { .. }));

@@ -15,6 +15,7 @@ pub enum SecretRequest {
 pub enum SecretResult {
     AlreadyValid,
     Created(String),
+    AlreadyExisted(String)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
