@@ -93,7 +93,7 @@ pub async fn validate_client(
 }
 
 async fn compare_clients(token: &str, name: &str, oidc_client_config: &OIDCConfig, conf: &KeyCloakConfig, secret: &str) -> Result<bool, reqwest::Error> {
-    let client = get_client(&name, &token, oidc_client_config, conf).await?;
+    let client = get_client(name, token, oidc_client_config, conf).await?;
     let wanted_client = generate_client(name, oidc_client_config, secret);
     Ok(client.get("secret") == wanted_client.get("secret")
         && client_configs_match(&client, &wanted_client))

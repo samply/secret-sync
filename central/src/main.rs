@@ -73,7 +73,7 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
 }
 
 pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result<SecretResult, String> {
-    let name = from.as_ref().splitn(3, '.').nth(1).unwrap();
+    let name = from.as_ref().split('.').nth(1).unwrap();
     println!("Working on secret task {task:?} from {from}");
     match task {
         SecretRequestType::ValidateOrCreate { current, request } if is_valid(&current, &request, name).await? => Ok(SecretResult::AlreadyValid),

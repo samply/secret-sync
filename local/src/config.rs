@@ -54,9 +54,9 @@ impl FromStr for SecretArg {
         let request = match secret_type {
             "OIDC" => {
                 let (is_public, args) = match args.split_once(';') {
-                    Some((is_public, args)) if is_public == "public" => (true, args),
-                    Some((is_public, args)) if is_public == "private" => (false, args),
-                    _ => return Err(format!("Invalid OIDC parameters. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
+                    Some(("public", args)) => (true, args),
+                    Some(("private", args)) => (false, args),
+                    _ => return Err(format!("Invalid OIDC parameters '{args}'. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
                 };
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
                 Ok(SecretRequest::OpenIdConnect(OIDCConfig{ redirect_urls, is_public }))
