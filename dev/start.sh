@@ -60,4 +60,8 @@ echo "Args: $args"
 
 export ARGS=$args
 
-docker compose down && docker compose up $compose_arg
+if [ "$1" = "-r" ]; then
+    docker compose down -t 1 local central && docker compose up local central -d $compose_arg && docker compose logs local central -f
+else 
+    docker compose down -t 1 && docker compose up -d $compose_arg && docker compose logs -f
+fi

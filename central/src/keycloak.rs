@@ -49,7 +49,10 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
         access_token: String,
     }
     CLIENT
-        .post("http://localhost:1337/realms/master/protocol/openid-connect/token")
+        .post(&format!(
+            "{}/realms/master/protocol/openid-connect/token",
+            if cfg!(test) { "http://localhost:1337"} else { "http://keycloak:8080" }
+        ))
         .form(&json!({
             "client_id": "admin-cli",
             "username": "admin",
@@ -117,11 +120,11 @@ fn client_configs_match(a: &Value, b: &Value) -> bool {
 
 fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) -> Value {
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    let name = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
+    let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
     let mut json = json!({
-        "name": name,
-        "id": name,
-        "clientId": name,
+        "name": id,
+        "id": id,
+        "clientId": id,
         "redirectUris": oidc_client_config.redirect_urls,
         "publicClient": oidc_client_config.is_public,
         "defaultClientScopes": [
@@ -139,7 +142,7 @@ fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) ->
             "protocolMapper": "oidc-audience-mapper",
             "consentRequired": false,
             "config": {
-                "included.client.audience": name,
+                "included.client.audience": id,
                 "id.token.claim": "true",
                 "access.token.claim": "true"
             }
@@ -181,7 +184,7 @@ async fn test_create_client() -> reqwest::Result<()> {
     assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
 
     // private client
-    let client_config = OIDCConfig { is_public: true, redirect_urls: vec!["http://foo/bar".into()] };
+    let client_config = OIDCConfig { is_public: false, redirect_urls: vec!["http://foo/bar".into()] };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
         panic!("Not created or existed")
     };
@@ -230,8 +233,9 @@ async fn post_client(
             } else {
                 Ok(CLIENT
                     .put(&format!(
-                        "{}/admin/realms/{}/clients/{name}",
-                        conf.keycloak_url, conf.keycloak_realm
+                        "{}/admin/realms/{}/clients/{}",
+                        conf.keycloak_url, conf.keycloak_realm,
+                        conflicting_client.get("clientId").and_then(Value::as_str).expect("We have a valid client")
                     ))
                     .bearer_auth(token)
                     .json(&generated_client)
@@ -239,11 +243,11 @@ async fn post_client(
                     .await?
                     .status()
                     .is_success()
-                    .then_some(SecretResult::Created(secret))
+                    .then_some(SecretResult::AlreadyExisted(secret))
                     .expect("We know the client already exists so updating should be successful"))
             }
         }
-        s => unreachable!("Unexpected statuscode {s} while creating keycloak client"),
+        s => unreachable!("Unexpected statuscode {s} while creating keycloak client. {res:?}"),
     }
 }
 

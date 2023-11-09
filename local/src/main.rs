@@ -75,7 +75,7 @@ async fn main() -> ExitCode {
             Ok(SecretResult::AlreadyExisted(secret)) => {
                 cache.entry(name.to_string())
                     .and_modify(|v| {
-                        println!("{name} was cached with a wrong secret so it has been updated.");
+                        println!("{name} was cached but needed to be updated.");
                         *v = secret.clone()
                     }).or_insert_with(|| {
                         println!("{name} already existed but was not cached.");
