@@ -84,22 +84,22 @@ pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result
 
 pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretResult, String> {
     match request {
-        SecretRequest::OpenIdConnect { redirect_urls } => {
+        SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
-            oidc_provider.create_client(name, redirect_urls).await
+            oidc_provider.create_client(name, oidc_client_config).await
         }
     }
 }
 
 pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
     match request {
-        SecretRequest::OpenIdConnect { redirect_urls } => {
+        SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
-            oidc_provider.validate_client(name, secret, redirect_urls).await
+            oidc_provider.validate_client(name, secret, oidc_client_config).await
         },
     }
 }

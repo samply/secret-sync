@@ -2,7 +2,7 @@ use std::{path::PathBuf, convert::Infallible, str::FromStr};
 
 use beam_lib::AppId;
 use clap::Parser;
-use shared::SecretRequest;
+use shared::{SecretRequest, OIDCConfig};
 
 /// Local secret sync
 #[derive(Debug, Parser)]
@@ -53,8 +53,13 @@ impl FromStr for SecretArg {
         // Add new `SecretRequest` variants here
         let request = match secret_type {
             "OIDC" => {
+                let (is_public, args) = match args.split_once(';') {
+                    Some((is_public, args)) if is_public == "public" => (true, args),
+                    Some((is_public, args)) if is_public == "private" => (false, args),
+                    _ => return Err(format!("Invalid OIDC parameters. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
+                };
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
-                Ok(SecretRequest::OpenIdConnect { redirect_urls })
+                Ok(SecretRequest::OpenIdConnect(OIDCConfig{ redirect_urls, is_public }))
             },
             _ => Err(format!("Unknown secret type {secret_type}"))
         }?;

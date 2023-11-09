@@ -2,7 +2,7 @@ use crate::CLIENT;
 use beam_lib::reqwest::{self, StatusCode, Url};
 use clap::Parser;
 use serde_json::{json, Value};
-use shared::SecretResult;
+use shared::{SecretResult, OIDCConfig};
 
 #[derive(Debug, Parser, Clone)]
 pub struct KeyCloakConfig {
@@ -43,16 +43,13 @@ async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
 }
 
 #[cfg(test)]
-async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> reqwest::Result<String> {
+async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
     #[derive(serde::Deserialize)]
     struct Token {
         access_token: String,
     }
     CLIENT
-        .post(&format!(
-            "{}/realms/{}/protocol/openid-connect/token",
-            conf.keycloak_url, conf.keycloak_realm
-        ))
+        .post("http://localhost:1337/realms/master/protocol/openid-connect/token")
         .form(&json!({
             "client_id": "admin-cli",
             "username": "admin",
@@ -67,10 +64,12 @@ async fn get_access_token_via_admin_login(conf: &KeyCloakConfig) -> reqwest::Res
 }
 
 async fn get_client(
-    id: &str,
+    name: &str,
     token: &str,
+    oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> reqwest::Result<serde_json::Value> {
+    let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
     CLIENT
         .get(&format!(
             "{}/admin/realms/{}/clients/{id}",
@@ -84,35 +83,47 @@ async fn get_client(
 }
 
 pub async fn validate_client(
-    id: &str,
-    redirect_urls: &[String],
+    name: &str,
+    oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &KeyCloakConfig,
 ) -> reqwest::Result<bool> {
     let token = get_access_token(conf).await?;
-    let client = get_client(id, &token, conf).await?;
-    let wanted_client = generate_client(id, redirect_urls, secret);
-    Ok(client_configs_match(&client, &wanted_client))
+    compare_clients(&token, name, oidc_client_config, conf, secret).await
+}
+
+async fn compare_clients(token: &str, name: &str, oidc_client_config: &OIDCConfig, conf: &KeyCloakConfig, secret: &str) -> Result<bool, reqwest::Error> {
+    let client = get_client(&name, &token, oidc_client_config, conf).await?;
+    let wanted_client = generate_client(name, oidc_client_config, secret);
+    Ok(client.get("secret") == wanted_client.get("secret")
+        && client_configs_match(&client, &wanted_client))
 }
 
 fn client_configs_match(a: &Value, b: &Value) -> bool {
-    assert_json_diff::assert_json_matches_no_panic(
-        &a,
-        &b,
-        assert_json_diff::Config::new(assert_json_diff::CompareMode::Inclusive)
-    )
-    .map_err(|e| eprintln!("Clients did not match: {e}"))
-    .is_ok()
+    let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| a
+        .get(key)
+        .and_then(Value::as_array)
+        .is_some_and(|a_values| b
+            .get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
+        );
+    
+    a.get("name") == b.get("name")
+        && includes_other_json_array("defaultClientScopes", &|a_v, v| a_v.contains(v))
+        && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
+        && includes_other_json_array("protocolMappers", &|a_v, v| a_v.iter().any(|a_v| a_v.get("name") == v.get("name")))
 }
 
-fn generate_client(name: &str, redirect_urls: &[String], secret: &str) -> Value {
-    json!({
+fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) -> Value {
+    let secret = (!oidc_client_config.is_public).then_some(secret);
+    let name = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
+    let mut json = json!({
         "name": name,
         "id": name,
         "clientId": name,
-        "redirectUris": redirect_urls,
-        "secret": secret,
-        "publicClient": false,
+        "redirectUris": oidc_client_config.redirect_urls,
+        "publicClient": oidc_client_config.is_public,
         "defaultClientScopes": [
             "web-origins",
             "acr",
@@ -133,31 +144,66 @@ fn generate_client(name: &str, redirect_urls: &[String], secret: &str) -> Value 
                 "access.token.claim": "true"
             }
         }]
-    })
+    });
+    if let Some(secret) = secret {
+        json.as_object_mut().unwrap().insert("secret".to_owned(), secret.into());
+    }
+    json
+}
+
+#[cfg(test)]
+async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
+    let token = get_access_token_via_admin_login().await?;
+    let res = CLIENT
+        .post("http://localhost:1337/admin/realms/master/client-scopes")
+        .bearer_auth(&token)
+        .json(&json!({
+            "name": "groups",
+            "protocol": "openid-connect"
+        }))
+        .send()
+        .await?;
+    dbg!(&res.status());
+    Ok((token, KeyCloakConfig { keycloak_url: "http://localhost:1337".parse().unwrap(), keycloak_id: "unused in tests".into(), keycloak_secret: "unused in tests".into(), keycloak_realm: "master".into() }))
 }
 
 #[tokio::test]
 async fn test_create_client() -> reqwest::Result<()> {
-    let conf = KeyCloakConfig {
-        keycloak_url: "http://localhost:1337".parse().unwrap(),
-        keycloak_id: "".to_owned(),
-        keycloak_secret: "".to_owned(),
-        keycloak_realm: "master".to_owned(),
+    let (token, conf) = setup_keycloak().await?;
+    let name = "test";
+    // public client
+    let client_config = OIDCConfig { is_public: true, redirect_urls: vec!["http://foo/bar".into()] };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+        panic!("Not created or existed")
     };
-    let token = get_access_token_via_admin_login(&conf).await?;
-    dbg!(post_client(&token, "test", vec!["http://test.bk".into()], &conf).await?);
-    dbg!(get_client("test", &token, &conf).await.unwrap());
+    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
+    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
+    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+
+    // private client
+    let client_config = OIDCConfig { is_public: true, redirect_urls: vec!["http://foo/bar".into()] };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+        panic!("Not created or existed")
+    };
+    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
+    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
+    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+
     Ok(())
 }
 
 async fn post_client(
     token: &str,
     name: &str,
-    redirect_urls: Vec<String>,
+    oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> reqwest::Result<SecretResult> {
-    let secret = generate_secret();
-    let generated_client = generate_client(name, &redirect_urls, &secret);
+    let secret = if !oidc_client_config.is_public {
+        generate_secret()
+    } else {
+        String::with_capacity(0)
+    };
+    let generated_client = generate_client(name, oidc_client_config, &secret);
     let res = CLIENT
         .post(&format!(
             "{}/admin/realms/{}/clients",
@@ -168,20 +214,23 @@ async fn post_client(
         .send()
         .await?;
     match res.status() {
-        StatusCode::CREATED => Ok(SecretResult::Created(secret)),
+        StatusCode::CREATED => {
+            println!("Client for {name} created.");
+            Ok(SecretResult::Created(secret))
+        },
         StatusCode::CONFLICT => {
-            let conflicting_client = get_client(name, token, conf).await?;
+            let conflicting_client = get_client(name, token, oidc_client_config, conf).await?;
             if client_configs_match(&conflicting_client, &generated_client) {
-                Ok(conflicting_client
+                Ok(SecretResult::AlreadyExisted(conflicting_client
                     .as_object()
                     .and_then(|o| o.get("secret"))
                     .and_then(|v| v.as_str())
-                    .map(|v| SecretResult::AlreadyExisted(v.into()))
-                    .expect("These values should have a secret"))
+                    .unwrap_or("")
+                    .to_owned()))
             } else {
                 Ok(CLIENT
                     .put(&format!(
-                        "{}/admin/realms/{}/clients",
+                        "{}/admin/realms/{}/clients/{name}",
                         conf.keycloak_url, conf.keycloak_realm
                     ))
                     .bearer_auth(token)
@@ -190,9 +239,8 @@ async fn post_client(
                     .await?
                     .status()
                     .is_success()
-                    .then_some(secret)
-                    .map(SecretResult::Created)
-                    .expect("Put should be successfull"))
+                    .then_some(SecretResult::Created(secret))
+                    .expect("We know the client already exists so updating should be successful"))
             }
         }
         s => unreachable!("Unexpected statuscode {s} while creating keycloak client"),
@@ -217,9 +265,9 @@ fn generate_secret() -> String {
 
 pub async fn create_client(
     name: &str,
-    redirect_urls: Vec<String>,
+    oidc_client_config: OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> reqwest::Result<SecretResult> {
     let token = get_access_token(conf).await?;
-    post_client(&token, name, redirect_urls, conf).await
+    post_client(&token, name, &oidc_client_config, conf).await
 }

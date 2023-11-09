@@ -5,11 +5,14 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequest {
-    OpenIdConnect {
-        redirect_urls: Vec<String>,
-    }
+    OpenIdConnect(OIDCConfig)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OIDCConfig {
+    pub is_public: bool,
+    pub redirect_urls: Vec<String>,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretResult {

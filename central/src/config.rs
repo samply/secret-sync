@@ -2,7 +2,7 @@ use std::{net::SocketAddr, convert::Infallible};
 
 use beam_lib::{AppId, reqwest::Url};
 use clap::Parser;
-use shared::SecretResult;
+use shared::{SecretResult, OIDCConfig};
 
 use crate::keycloak::{KeyCloakConfig, self};
 
@@ -36,19 +36,19 @@ impl OIDCProvider {
         KeyCloakConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Keycloak)
     }
 
-    pub async fn create_client(&self, name: &str, redirect_urls: Vec<String>) -> Result<SecretResult, String> {
+    pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
         match self {
-            OIDCProvider::Keycloak(conf) => keycloak::create_client(name, redirect_urls, conf).await,
+            OIDCProvider::Keycloak(conf) => keycloak::create_client(name, oidc_client_config, conf).await,
         }.map_err(|e| {
             println!("Failed to create client: {e}");
             "Error creating OIDC client".into()
         })
     }
 
-    pub async fn validate_client(&self, name: &str, secret: &str, redirect_urls: &[String]) -> Result<bool, String> {
+    pub async fn validate_client(&self, name: &str, secret: &str, oidc_client_config: &OIDCConfig) -> Result<bool, String> {
         match self {
             OIDCProvider::Keycloak(conf) => {
-                keycloak::validate_client(name, redirect_urls, secret, conf)
+                keycloak::validate_client(name, oidc_client_config, secret, conf)
                     .await
                     .map_err(|e| {
                         eprintln!("Failed to validate client {name}: {e}");

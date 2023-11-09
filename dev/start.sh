@@ -40,7 +40,7 @@ if [ "$1" = "-b" ]; then
     shift
 fi
 
-args="OIDC:test:http://foo.com,http://bar.com"
+args="OIDC:test:public;http://foo.com,http://bar.com"
 # first=true
 # delimiter=$'\x1E'
 # # https://unix.stackexchange.com/a/460466

@@ -65,7 +65,9 @@ services:
 Register an Open ID Connect client at the central half of this component.
 
 Secret type: `OIDC`  
-Arguments: A comma separated list of urls permitted for redirection  
+Each argument is separated by a semicolon. The arguments are: 
+- The type of OIDC client which gets created. Either `public` or `private`
+- A comma separated list of urls permitted for redirection  
 
 Example:
-`OIDC:MY_OIDC_CLIENT_SECRET:https://foo.com,https://bar.com`
+`OIDC:MY_OIDC_CLIENT_SECRET:public;https://foo.com,https://bar.com`
