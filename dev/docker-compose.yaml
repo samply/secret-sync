@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile.central
     image: samply/secret-sync-central:latest
     environment:
-      # - BEAM_URL=http://proxy:8082
+      - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
       - BEAM_SECRET=App1Secret
       - KEYCLOAK_URL=http://keycloak:8080
