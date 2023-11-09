@@ -40,9 +40,11 @@ if [ "$1" = "-b" ]; then
     shift
 fi
 
-args="OIDC:test:public;http://foo.com,http://bar.com"
+delimiter=$'\x1E'
+args="OIDC:test-pub:public;http://foo.com,http://bar.com"
+args+="$delimiter"
+args+="OIDC:test-priv:private;http://foo.com,http://bar.com"
 # first=true
-# delimiter=$'\x1E'
 # # https://unix.stackexchange.com/a/460466
 # for var in "${!SECRET_@}"; do
 #     if $first; then

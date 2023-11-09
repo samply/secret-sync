@@ -60,15 +60,27 @@ async fn main() -> ExitCode {
     {
         match result {
             Ok(SecretResult::AlreadyValid) => {
-                println!("{name} was already valid")
+                println!("{name} was cached correctly.")
             }
-            Ok(SecretResult::Created(new_value)) => {
-                println!("{name} has been created");
-                cache.entry(name.clone()).or_insert(new_value);
+            Ok(SecretResult::Created(secret)) => {
+                cache.entry(name.to_string())
+                    .and_modify(|v| {
+                        println!("{name} was cached locally but did not exist centrally so it was created.");
+                        *v = secret.clone()
+                    }).or_insert_with(|| {
+                        println!("{name} has been created.");
+                        secret
+                    });
             },
             Ok(SecretResult::AlreadyExisted(secret)) => {
-                println!("{name} already existed but was not cached");
-                cache.entry(name.clone()).or_insert(secret);
+                cache.entry(name.to_string())
+                    .and_modify(|v| {
+                        println!("{name} was cached with a wrong secret so it has been updated.");
+                        *v = secret.clone()
+                    }).or_insert_with(|| {
+                        println!("{name} already existed but was not cached.");
+                        secret
+                    });
             }
             Err(e) => {
                 exit_code = ExitCode::FAILURE;
