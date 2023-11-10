@@ -170,6 +170,7 @@ async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
     Ok((token, KeyCloakConfig { keycloak_url: "http://localhost:1337".parse().unwrap(), keycloak_id: "unused in tests".into(), keycloak_secret: "unused in tests".into(), keycloak_realm: "master".into() }))
 }
 
+#[ignore = "Requires setting up a keycloak"]
 #[tokio::test]
 async fn test_create_client() -> reqwest::Result<()> {
     let (token, conf) = setup_keycloak().await?;
