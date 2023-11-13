@@ -23,7 +23,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD_REQUIRED_FOR_README_SYNC }}
           repository: ${{ github.repository }}-${{ matrix.component }}
-          readme: "./README.md"
+          readme: "./Readme.md"
           replace_pattern: "](./"
           replace_with: "](https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/"
 
