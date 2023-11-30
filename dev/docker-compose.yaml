@@ -34,6 +34,7 @@ services:
       - KEYCLOAK_URL=http://keycloak:8080
       - KEYCLOAK_ID=admin
       - KEYCLOAK_SECRET=admin
+      - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users
     extra_hosts:
       - "proxy:${PROXY_IP}"
     

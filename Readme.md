@@ -57,6 +57,8 @@ services:
       - KEYCLOAK_ID=my_keycloak_admin
       # The client secret for the client
       - KEYCLOAK_SECRET=my_secret
+      # Extra service account roles for the private client
+      - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users,query-groups
 ```
 
 ## Secret types

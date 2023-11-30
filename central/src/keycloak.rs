@@ -2,7 +2,7 @@ use crate::CLIENT;
 use beam_lib::reqwest::{self, StatusCode, Url};
 use clap::Parser;
 use serde_json::{json, Value};
-use shared::{SecretResult, OIDCConfig};
+use shared::{OIDCConfig, SecretResult};
 
 #[derive(Debug, Parser, Clone)]
 pub struct KeyCloakConfig {
@@ -18,6 +18,9 @@ pub struct KeyCloakConfig {
     /// Keycloak realm
     #[clap(long, env, default_value = "master")]
     pub keycloak_realm: String,
+    /// Keycloak service account roles that should be added to the private keycloak clints
+    #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
+    pub keycloak_service_account_roles: Vec<String>,
 }
 
 async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
@@ -95,7 +98,13 @@ pub async fn validate_client(
     compare_clients(&token, name, oidc_client_config, conf, secret).await
 }
 
-async fn compare_clients(token: &str, name: &str, oidc_client_config: &OIDCConfig, conf: &KeyCloakConfig, secret: &str) -> Result<bool, reqwest::Error> {
+async fn compare_clients(
+    token: &str,
+    name: &str,
+    oidc_client_config: &OIDCConfig,
+    conf: &KeyCloakConfig,
+    secret: &str,
+) -> Result<bool, reqwest::Error> {
     let client = get_client(name, token, oidc_client_config, conf).await?;
     let wanted_client = generate_client(name, oidc_client_config, secret);
     Ok(client.get("secret") == wanted_client.get("secret")
@@ -127,6 +136,7 @@ fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) ->
         "clientId": id,
         "redirectUris": oidc_client_config.redirect_urls,
         "publicClient": oidc_client_config.is_public,
+        "serviceAccountsEnabled": !oidc_client_config.is_public,
         "defaultClientScopes": [
             "web-origins",
             "acr",
@@ -167,7 +177,16 @@ async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
         .send()
         .await?;
     dbg!(&res.status());
-    Ok((token, KeyCloakConfig { keycloak_url: "http://localhost:1337".parse().unwrap(), keycloak_id: "unused in tests".into(), keycloak_secret: "unused in tests".into(), keycloak_realm: "master".into() }))
+    Ok((
+        token,
+        KeyCloakConfig {
+            keycloak_url: "http://localhost:1337".parse().unwrap(),
+            keycloak_id: "unused in tests".into(),
+            keycloak_secret: "unused in tests".into(),
+            keycloak_realm: "master".into(),
+            keycloak_service_account_roles: vec!["query-users".into(), "view-users".into()],
+        },
+    ))
 }
 
 #[ignore = "Requires setting up a keycloak"]
@@ -220,23 +239,34 @@ async fn post_client(
     match res.status() {
         StatusCode::CREATED => {
             println!("Client for {name} created.");
+            if !oidc_client_config.is_public {
+                let client_id = generated_client
+                    .get("clientId")
+                    .and_then(Value::as_str)
+                    .expect("Always present");
+                add_service_account_roles(token, client_id, conf).await?;
+            }
             Ok(SecretResult::Created(secret))
-        },
+        }
         StatusCode::CONFLICT => {
             let conflicting_client = get_client(name, token, oidc_client_config, conf).await?;
             if client_configs_match(&conflicting_client, &generated_client) {
                 Ok(SecretResult::AlreadyExisted(conflicting_client
                     .as_object()
                     .and_then(|o| o.get("secret"))
-                    .and_then(|v| v.as_str())
+                    .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_owned()))
             } else {
                 Ok(CLIENT
                     .put(&format!(
                         "{}/admin/realms/{}/clients/{}",
-                        conf.keycloak_url, conf.keycloak_realm,
-                        conflicting_client.get("clientId").and_then(Value::as_str).expect("We have a valid client")
+                        conf.keycloak_url,
+                        conf.keycloak_realm,
+                        conflicting_client
+                            .get("clientId")
+                            .and_then(Value::as_str)
+                            .expect("We have a valid client")
                     ))
                     .bearer_auth(token)
                     .json(&generated_client)
@@ -275,4 +305,94 @@ pub async fn create_client(
 ) -> reqwest::Result<SecretResult> {
     let token = get_access_token(conf).await?;
     post_client(&token, name, &oidc_client_config, conf).await
+}
+
+#[ignore = "Requires setting up a keycloak"]
+#[tokio::test]
+async fn service_account_test() -> reqwest::Result<()> {
+    let (token, conf) = setup_keycloak().await?;
+    dbg!(get_realm_permission_roles(&token, &conf).await?);
+    // add_service_account_roles(&token, "test-private", &conf).await?;
+    Ok(())
+}
+
+async fn add_service_account_roles(
+    token: &str,
+    client_id: &str,
+    conf: &KeyCloakConfig,
+) -> reqwest::Result<()> {
+    if conf.keycloak_service_account_roles.is_empty() {
+        return Ok(());
+    }
+    #[derive(serde::Deserialize)]
+    struct UserIdExtractor {
+        id: String,
+    }
+    let service_account_id = CLIENT.get(&format!(
+            "{}/admin/realms/{}/clients/{}/service-account-user",
+            conf.keycloak_url, conf.keycloak_realm, client_id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await?
+        .json::<UserIdExtractor>()
+        .await?
+        .id;
+    let roles: Vec<_> = get_realm_permission_roles(token, conf)
+        .await?
+        .into_iter()
+        .filter(|f| conf.keycloak_service_account_roles.contains(&f.name))
+        .collect();
+
+    assert_eq!(roles.len(), conf.keycloak_service_account_roles.len(), "Failed to find all required service account roles got {roles:#?} but expected all of these: {:#?}", conf.keycloak_service_account_roles);
+    let realm_id = roles[0].container_id.clone();
+    CLIENT.post(&format!(
+            "{}/admin/realms/{}/users/{}/role-mappings/clients/{}",
+            conf.keycloak_url, conf.keycloak_realm, service_account_id, realm_id
+        ))
+        .bearer_auth(token)
+        .json(&roles)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct ServiceAccountRole {
+    id: String,
+    #[serde(rename = "containerId", skip_serializing)]
+    container_id: String,
+    name: String
+}
+
+async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwest::Result<Vec<ServiceAccountRole>> {
+    #[derive(Debug, serde::Deserialize)]
+    struct RealmId {
+        id: String,
+        #[serde(rename = "clientId")]
+        client_id: String
+    }
+    let res = CLIENT.get(&format!(
+            "{}/admin/realms/{}/clients/?q={}-realm&search",
+            conf.keycloak_url, conf.keycloak_realm, "realm-management"
+        ))
+        .bearer_auth(token)
+        .send()
+        .await?
+        .json::<Vec<RealmId>>()
+        .await?;
+    let role_client = res.into_iter()
+        .find(|v| v.client_id.starts_with(&conf.keycloak_realm))
+        .expect(&format!("Failed to find realm id for {}", conf.keycloak_realm));
+    // GET /admin/realms/{realm}/clients/{id}/roles
+    CLIENT.get(&format!(
+            "{}/admin/realms/{}/clients/{}/roles",
+            conf.keycloak_url, conf.keycloak_realm, role_client.id
+        ))
+        .bearer_auth(token)
+        .send()
+        .await?
+        .json()
+        .await
 }
