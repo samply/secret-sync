@@ -373,9 +373,14 @@ async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwe
         #[serde(rename = "clientId")]
         client_id: String
     }
+    let permission_realm = if conf.keycloak_realm == "master" {
+        "master-realm"
+    } else {
+        "realm-management"
+    };
     let res = CLIENT.get(&format!(
-            "{}/admin/realms/{}/clients/?q={}-realm&search",
-            conf.keycloak_url, conf.keycloak_realm, "realm-management"
+            "{}/admin/realms/{}/clients/?q={permission_realm}&search",
+            conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
         .send()
@@ -383,9 +388,8 @@ async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwe
         .json::<Vec<RealmId>>()
         .await?;
     let role_client = res.into_iter()
-        .find(|v| v.client_id.starts_with(&conf.keycloak_realm))
-        .expect(&format!("Failed to find realm id for {}", conf.keycloak_realm));
-    // GET /admin/realms/{realm}/clients/{id}/roles
+        .find(|v| v.client_id.starts_with(permission_realm))
+        .expect(&format!("Failed to find realm id for {permission_realm}"));
     CLIENT.get(&format!(
             "{}/admin/realms/{}/clients/{}/roles",
             conf.keycloak_url, conf.keycloak_realm, role_client.id
