@@ -236,6 +236,8 @@ async fn post_client(
         .json(&generated_client)
         .send()
         .await?;
+    // Create groups for this client
+    create_groups(name, token, conf).await?;
     match res.status() {
         StatusCode::CREATED => {
             println!("Client for {name} created.");
@@ -282,6 +284,37 @@ async fn post_client(
     }
 }
 
+async fn create_groups(name: &str, token: &str, conf: &KeyCloakConfig) -> reqwest::Result<()> {
+    let capitalize = |s: &str| {
+        let mut chrs = s.chars();
+        chrs.next().map(char::to_uppercase).map(Iterator::collect).unwrap_or(String::new()) + chrs.as_str()
+    };
+    let name = capitalize(name);
+    post_group(&format!("DKTK_CCP_{name}"), token, conf).await?;
+    post_group(&format!("DKTK_CCP_{name}_Verwalter"), token, conf).await?;
+    Ok(())
+}
+
+async fn post_group(name: &str, token: &str, conf: &KeyCloakConfig) -> reqwest::Result<()> {
+    let res = CLIENT
+        .post(&format!(
+            "{}/admin/realms/{}/groups",
+            conf.keycloak_url, conf.keycloak_realm
+        ))
+        .bearer_auth(token)
+        .json(&json!({
+            "name": name
+        }))
+        .send()
+        .await?;
+    match res.status() {
+        StatusCode::CREATED => println!("Created group {name}"),
+        StatusCode::CONFLICT => println!("Group {name} already existed"),
+        s => unreachable!("Unexpected statuscode {s} while creating group {name}")
+    }
+    Ok(())
+}
+
 fn generate_secret() -> String {
     use rand::Rng;
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
@@ -311,7 +344,8 @@ pub async fn create_client(
 #[tokio::test]
 async fn service_account_test() -> reqwest::Result<()> {
     let (token, conf) = setup_keycloak().await?;
-    dbg!(get_realm_permission_roles(&token, &conf).await?);
+    create_groups("test", &token, &conf).await?;
+    // dbg!(get_realm_permission_roles(&token, &conf).await?);
     // add_service_account_roles(&token, "test-private", &conf).await?;
     Ok(())
 }
