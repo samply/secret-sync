@@ -135,6 +135,7 @@ fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) ->
         "id": id,
         "clientId": id,
         "redirectUris": oidc_client_config.redirect_urls,
+        "webOrigins": ["+"], // Will allow all hosts that are named in redirectUris. This is not the same as '*'
         "publicClient": oidc_client_config.is_public,
         "serviceAccountsEnabled": !oidc_client_config.is_public,
         "defaultClientScopes": [
