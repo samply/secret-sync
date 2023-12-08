@@ -21,6 +21,9 @@ pub struct KeyCloakConfig {
     /// Keycloak service account roles that should be added to the private keycloak clints
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub keycloak_service_account_roles: Vec<String>,
+    /// Keycloak groups that get auto generated per bridgehead. Must include a '#' which will be replaced by the SITE_ID of the bridgehead
+    #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
+    pub keycloak_groups_per_bh: Vec<String>,
 }
 
 async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
@@ -186,6 +189,7 @@ async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
             keycloak_secret: "unused in tests".into(),
             keycloak_realm: "master".into(),
             keycloak_service_account_roles: vec!["query-users".into(), "view-users".into()],
+            keycloak_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
         },
     ))
 }
@@ -291,8 +295,9 @@ async fn create_groups(name: &str, token: &str, conf: &KeyCloakConfig) -> reqwes
         chrs.next().map(char::to_uppercase).map(Iterator::collect).unwrap_or(String::new()) + chrs.as_str()
     };
     let name = capitalize(name);
-    post_group(&format!("DKTK_CCP_{name}"), token, conf).await?;
-    post_group(&format!("DKTK_CCP_{name}_Verwalter"), token, conf).await?;
+    for group in &conf.keycloak_groups_per_bh {
+        post_group(&group.replace('#', &name), token, conf).await?;
+    }
     Ok(())
 }
 
