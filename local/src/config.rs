@@ -61,6 +61,7 @@ impl FromStr for SecretArg {
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
                 Ok(SecretRequest::OpenIdConnect(OIDCConfig{ redirect_urls, is_public }))
             },
+            "GITLAB" => Ok(SecretRequest::GitlabRequest),
             _ => Err(format!("Unknown secret type {secret_type}"))
         }?;
 

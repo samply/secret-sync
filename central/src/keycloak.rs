@@ -189,7 +189,7 @@ async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
             keycloak_secret: "unused in tests".into(),
             keycloak_realm: "master".into(),
             keycloak_service_account_roles: vec!["query-users".into(), "view-users".into()],
-            keycloak_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
+            keycloak_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into(), "DKTK_CCP_#_rstudio".into()],
         },
     ))
 }

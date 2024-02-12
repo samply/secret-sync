@@ -90,7 +90,13 @@ pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretR
             };
             oidc_provider.create_client(name, oidc_client_config).await
         }
+        SecretRequest::GitlabRequest => create_gitlab_token(name).await,
     }
+}
+
+async fn create_gitlab_token(name: &str) -> Result<SecretResult, String> {
+    let token = todo!();
+    Ok(SecretResult::Created(token))
 }
 
 pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
@@ -101,5 +107,6 @@ pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Resu
             };
             oidc_provider.validate_client(name, secret, oidc_client_config).await
         },
+        SecretRequest::GitlabRequest => Ok(true),
     }
 }

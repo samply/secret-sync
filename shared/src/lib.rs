@@ -5,7 +5,8 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequest {
-    OpenIdConnect(OIDCConfig)
+    OpenIdConnect(OIDCConfig),
+    GitlabRequest
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
