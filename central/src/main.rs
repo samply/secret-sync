@@ -5,9 +5,11 @@ use clap::Parser;
 use config::{Config, OIDCProvider};
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
+use gitlab::create_gitlab_token;
 
 mod config;
 mod keycloak;
+mod gitlab;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -92,11 +94,6 @@ pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretR
         }
         SecretRequest::GitlabRequest => create_gitlab_token(name).await,
     }
-}
-
-async fn create_gitlab_token(name: &str) -> Result<SecretResult, String> {
-    let token = todo!();
-    Ok(SecretResult::Created(token))
 }
 
 pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
