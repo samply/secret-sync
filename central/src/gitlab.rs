@@ -1,16 +1,19 @@
+use reqwest::Client;
 use serde_json::Value;
+use clap::Parser;
+use once_cell::sync::Lazy;
 use reqwest::header::{HeaderMap, HeaderValue};
 use chrono::{Utc, Duration};
 use shared::SecretResult;
+use crate::config::GitlabConfig;
 
+pub static CONFIG: Lazy<GitlabConfig> = Lazy::new(GitlabConfig::parse);
+pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
-
-pub async fn create_gitlab_token(name: &str) -> Result<SecretResult, String> {
-    let private_token = "PRIVATE_TOKEN"; //TODO
-
-    match fetch_token_id(name, private_token).await {
+pub async fn create_gitlab_token(token_name: &str) -> Result<SecretResult, String> {
+    match fetch_token_id(&CLIENT, &CONFIG, token_name).await {
         Ok(token_id) => {
-            match rotate_token(private_token, token_id).await {
+            match rotate_token(&CLIENT, &CONFIG, token_id).await {
                 Ok(new_token) => Ok(SecretResult::Created(new_token)),
                 Err(e) => Err(format!("Failed to rotate token: {}", e)),
             }
@@ -19,11 +22,10 @@ pub async fn create_gitlab_token(name: &str) -> Result<SecretResult, String> {
     }
 }
 
-async fn fetch_token_id(search_param: &str, private_token: &str) -> Result<u32, String> {
-    let client = reqwest::Client::new();
-    let url = format!("https://git.verbis.dkfz.de/api/v4/personal_access_tokens?search={}", search_param);
+async fn fetch_token_id(client: &Client, gitlab_config: &GitlabConfig, token_name: &str) -> Result<u32, String> {
+    let url = format!("{}/api/v4/personal_access_tokens?search={}", gitlab_config.gitlab_url, token_name);
     let mut headers = HeaderMap::new();
-    headers.insert("PRIVATE-TOKEN", HeaderValue::from_str(private_token).unwrap());
+    headers.insert("PRIVATE-TOKEN", HeaderValue::from_str(&gitlab_config.private_token).unwrap());
 
     let response = client.get(&url)
         .headers(headers)
@@ -45,16 +47,14 @@ async fn fetch_token_id(search_param: &str, private_token: &str) -> Result<u32, 
     }
 }
 
-async fn rotate_token(private_token: &str, token_id: u32) -> Result<String, String> {
-    let client = reqwest::Client::new();
-
+async fn rotate_token(client: &Client, gitlab_config: &GitlabConfig, token_id: u32) -> Result<String, String> {
     let expires_at = Utc::now() + Duration::days(365);
     let expires_at_str = expires_at.format("%Y-%m-%d").to_string();
 
-    let url = format!("https://git.verbis.dkfz.de/api/v4/personal_access_tokens/{}/rotate?expires_at={}", token_id, expires_at_str);
+    let url = format!("{}/api/v4/personal_access_tokens/{}/rotate?expires_at={}", gitlab_config.gitlab_url, token_id, expires_at_str);
 
     let mut headers = HeaderMap::new();
-    headers.insert("PRIVATE-TOKEN", HeaderValue::from_str(private_token).unwrap());
+    headers.insert("PRIVATE-TOKEN", HeaderValue::from_str(&gitlab_config.private_token).unwrap());
 
     let response = client.post(&url)
         .headers(headers)

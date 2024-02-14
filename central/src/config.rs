@@ -26,6 +26,12 @@ pub struct Config {
     pub beam_id: AppId,
 }
 
+#[derive(Parser, Clone, Debug)]
+pub struct GitlabConfig {
+    pub gitlab_url: String,
+    pub private_token: String,
+}
+
 #[derive(Clone, Debug)]
 pub enum OIDCProvider {
     Keycloak(KeyCloakConfig)
