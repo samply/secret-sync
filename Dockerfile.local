@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release --bin local
 
 FROM gcr.io/distroless/cc-debian12:debug AS runtime
-COPY --from=proxy /usr/local/bin/beam /usr/local/bin/proxy
+COPY --from=proxy /usr/local/bin/beam-proxy /usr/local/bin/proxy
 COPY --from=builder /app/target/release/local /usr/local/bin/
 
 ENV APP_secret-sync_KEY=NotSecret
