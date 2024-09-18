@@ -44,29 +44,6 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
         .map(|t| t.access_token)
 }
 
-#[cfg(test)]
-async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
-    #[derive(serde::Deserialize)]
-    struct Token {
-        access_token: String,
-    }
-    CLIENT
-        .post(&format!(
-        "{}/application/o/token",
-            if cfg!(test) { "http://localhost:9000"} else { "http://keycloak:8080" }
-        ))
-        .form(&json!({
-            "grant_type": "client_credentials",
-            "client_id": "MI4DbeyktmjbXJRmUY9tkWvhK7yOzly139EgzhPZ",
-            "client_secret": "YGcFnXQMI7HqeDUWClhTkZmPtYj4aB2z3khnoMNpCo8CgTOhUqqOFE56dP2WOJoPGOeqdPsVCrR4yvjnJviYK6dY8WeykDqnzAO1xCLHOsPxefcSAa21qe0ru2bwWBi7",
-            "scope": "openid"
-        }))
-        .send()
-        .await?
-        .json::<Token>()
-        .await
-        .map(|t| t.access_token)
-}
 
 /*
 async fn get_client(

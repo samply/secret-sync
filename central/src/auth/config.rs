@@ -4,7 +4,7 @@ use beam_lib::{AppId, reqwest::Url};
 use clap::Parser;
 use shared::{SecretResult, OIDCConfig};
 
-use crate::keycloak::{KeyCloakConfig, self};
+use crate::auth::keycloak::{KeyCloakConfig, self};
 
 /// Central secret sync
 #[derive(Debug, Parser)]

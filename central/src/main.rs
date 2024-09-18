@@ -2,13 +2,11 @@ use std::{collections::HashSet, time::Duration};
 
 use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskResult, AppId};
 use clap::Parser;
-use config::{Config, OIDCProvider};
+use auth::config::{Config, OIDCProvider};
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
 
-mod config;
-mod authentik;
-mod keycloak;
+mod auth;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
