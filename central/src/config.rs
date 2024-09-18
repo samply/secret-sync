@@ -38,7 +38,7 @@ impl OIDCProvider {
 
     pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
         match self {
-            OIDCProvider::Keycloak(conf) => authentik::create_client(name, oidc_client_config, conf).await,
+            OIDCProvider::Keycloak(conf) => keycloak::create_client(name, oidc_client_config, conf).await,
         }.map_err(|e| {
             println!("Failed to create client: {e}");
             "Error creating OIDC client".into()
@@ -48,7 +48,7 @@ impl OIDCProvider {
     pub async fn validate_client(&self, name: &str, secret: &str, oidc_client_config: &OIDCConfig) -> Result<bool, String> {
         match self {
             OIDCProvider::Keycloak(conf) => {
-                authentik::validate_client(name, oidc_client_config, secret, conf)
+                keycloak::validate_client(name, oidc_client_config, secret, conf)
                     .await
                     .map_err(|e| {
                         eprintln!("Failed to validate client {name}: {e}");
