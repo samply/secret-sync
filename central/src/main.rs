@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
 
 mod config;
+mod authentik;
 mod keycloak;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);

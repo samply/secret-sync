@@ -5,41 +5,38 @@ use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
 #[derive(Debug, Parser, Clone)]
-pub struct KeyCloakConfig {
-    /// Keycloak url
+pub struct AuthentikConfig {
+    /// authentik url
     #[clap(long, env)]
-    pub keycloak_url: Url,
-    /// Keycloak client id
+    pub authentik_url: Url,
     #[clap(long, env)]
-    pub keycloak_id: String,
-    /// Keycloak client secret
+    pub authentik_id: String,
     #[clap(long, env)]
-    pub keycloak_secret: String,
-    /// Keycloak realm
+    pub authentik_secret: String,
     #[clap(long, env, default_value = "master")]
-    pub keycloak_realm: String,
-    /// Keycloak service account roles that should be added to the private keycloak clints
+    pub authentik_realm: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
-    pub keycloak_service_account_roles: Vec<String>,
-    /// Keycloak groups that get auto generated per bridgehead. Must include a '#' which will be replaced by the SITE_ID of the bridgehead
+    pub authentik_service_account_roles: Vec<String>,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
-    pub keycloak_groups_per_bh: Vec<String>,
+    pub authentik_groups_per_bh: Vec<String>,
 }
 
-async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
+async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
     #[derive(serde::Deserialize)]
     struct Token {
         access_token: String,
     }
     CLIENT
         .post(&format!(
-            "{}/realms/{}/protocol/openid-connect/token",
-            conf.keycloak_url, conf.keycloak_realm
+            "{}/application/o/token",
+            conf.authentik_url
         ))
         .form(&json!({
-            "client_id": conf.keycloak_id,
-            "client_secret":  conf.keycloak_secret,
-            "grant_type": "client_credentials"
+            "grant_type": "client_credentials",
+            "client_id": conf.authentik_id,
+            "username": "",
+            "passord": "",
+            "scope": ""
         }))
         .send()
         .await?
@@ -56,14 +53,14 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
     }
     CLIENT
         .post(&format!(
-            "{}/realms/master/protocol/openid-connect/token",
-            if cfg!(test) { "http://localhost:1337"} else { "http://keycloak:8080" }
+        "{}/application/o/token",
+            if cfg!(test) { "http://localhost:9000"} else { "http://keycloak:8080" }
         ))
         .form(&json!({
-            "client_id": "admin-cli",
-            "username": "admin",
-            "password": "admin",
-            "grant_type": "password"
+            "grant_type": "client_credentials",
+            "client_id": "MI4DbeyktmjbXJRmUY9tkWvhK7yOzly139EgzhPZ",
+            "client_secret": "YGcFnXQMI7HqeDUWClhTkZmPtYj4aB2z3khnoMNpCo8CgTOhUqqOFE56dP2WOJoPGOeqdPsVCrR4yvjnJviYK6dY8WeykDqnzAO1xCLHOsPxefcSAa21qe0ru2bwWBi7",
+            "scope": "openid"
         }))
         .send()
         .await?
