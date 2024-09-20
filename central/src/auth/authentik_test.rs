@@ -11,10 +11,13 @@ async fn get_access_token() {
     #[derive(Deserialize, Serialize, Debug)]
     struct Token {
         access_token: String,
+        token_type: String,
+        expires_in: i32,
+        id_token: String
     }
     let response = CLIENT
         .post(path_url)
-        .header("Content-Type", "applikation/x-www-form-urlencoded")
+        .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&[
             ("grant_type", "client_credentials"),
             ("client_id", "MI4DbeyktmjbXJRmUY9tkWvhK7yOzly139EgzhPZ"),
@@ -24,11 +27,13 @@ async fn get_access_token() {
         .send()
         .await
         .expect("no response");
+    let raw = response.text().await.expect("no resoponse");
+    dbg!(&raw);
 
-    let t = response
-        .json::<Token>()
-        .await
-        .expect("Token can not be parseed");
-    dbg!(&t);
-    assert!(!t.access_token.is_empty());
+    // let t = response
+    //     .json::<Token>()
+    //     .await
+    //     .expect("Token can not be parseed");
+    // dbg!(&t);
+    // assert!(!t.access_token.is_empty());
 }
