@@ -6,6 +6,8 @@ use shared::{SecretResult, OIDCConfig};
 
 use crate::auth::keycloak::{KeyCloakConfig, self};
 
+use super::authentik::AuthentikConfig;
+
 /// Central secret sync
 #[derive(Debug, Parser)]
 pub struct Config {
@@ -28,7 +30,8 @@ pub struct Config {
 
 #[derive(Clone, Debug)]
 pub enum OIDCProvider {
-    Keycloak(KeyCloakConfig)
+    Keycloak(KeyCloakConfig),
+    Authentik(AuthentikConfig)
 }
 
 impl OIDCProvider {
@@ -39,6 +42,7 @@ impl OIDCProvider {
     pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
         match self {
             OIDCProvider::Keycloak(conf) => keycloak::create_client(name, oidc_client_config, conf).await,
+            OIDCProvider::Authentik(conf) => todo!("create Authentik")
         }.map_err(|e| {
             println!("Failed to create client: {e}");
             "Error creating OIDC client".into()
@@ -55,6 +59,7 @@ impl OIDCProvider {
                         "Failed to validate client. See upstrean logs.".into()
                     })
             },
+            OIDCProvider::Authentik(conf) => todo!("create Authentik")
         }
     }
 }
