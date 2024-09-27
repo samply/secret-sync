@@ -30,13 +30,13 @@ pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> reqw
         .send()
         .await?;
     match res.status() {
-        StatusCode::CREATED => println!("Created group {name}"),
+         StatusCode::CREATED => println!("Created group {name}"),
         StatusCode::CONFLICT => println!("Group {name} already existed"),
         s => unreachable!("Unexpected statuscode {s} while creating group {name}")
     }
     Ok(())
 }
-
+/*
 async fn add_service_account_roles(
     token: &str,
     client_id: &str,
@@ -86,7 +86,8 @@ struct ServiceAccountRole {
     container_id: String,
     name: String
 }
-/*
+
+
 async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwest::Result<Vec<ServiceAccountRole>> {
     #[derive(Debug, serde::Deserialize)]
     struct RealmId {

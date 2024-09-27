@@ -1,6 +1,6 @@
 mod test;
 mod group;
-
+mod app;
 
 use crate::CLIENT;
 use beam_lib::reqwest::{self, StatusCode, Url};
@@ -19,9 +19,6 @@ pub struct AuthentikConfig {
     pub authentik_id: String,
     #[clap(long, env)]
     pub authentik_secret: String,
-    // !Todo is it needed 
-    #[clap(long, env, default_value = "master")]
-    pub authentik_tenant: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_service_account_roles: Vec<String>,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
@@ -50,8 +47,6 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
         .await
         .map(|t| t.access_token)
 }
-
-
 
 async fn get_application(
     name: &str,
@@ -111,113 +106,6 @@ fn client_configs_match(a: &Value, b: &Value) -> bool {
         && includes_other_json_array("protocolMappers", &|a_v, v| a_v.iter().any(|a_v| a_v.get("name") == v.get("name")))
 }
 
-fn generate_application(name: &str, oidc_client_config: &OIDCConfig, secret: &str) -> Value {
-    let secret = (!oidc_client_config.is_public).then_some(secret);
-    let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
-// Todo noch anpassen
-    let mut json = json!({
-        "name": id,
-        "id": id,
-        "clientId": id,
-        "redirectUris": oidc_client_config.redirect_urls,
-        "webOrigins": ["+"], // Will allow all hosts that are named in redirectUris. This is not the same as '*'
-        "publicClient": oidc_client_config.is_public,
-        "serviceAccountsEnabled": !oidc_client_config.is_public,
-        "defaultClientScopes": [
-            "web-origins",
-            "acr",
-            "profile",
-            "roles",
-            "email",
-            "microprofile-jwt",
-            "groups"
-        ],
-        "protocolMappers": [{
-            "name": format!("aud-mapper-{name}"),
-            "protocol": "openid-connect",
-            "protocolMapper": "oidc-audience-mapper",
-            "consentRequired": false,
-            "config": {
-                "included.client.audience": id,
-                "id.token.claim": "true",
-                "access.token.claim": "true"
-            }
-        }]
-    });
-    if let Some(secret) = secret {
-        json.as_object_mut().unwrap().insert("secret".to_owned(), secret.into());
-    }
-    json
-}
-
-async fn post_application(
-    token: &str,
-    name: &str,
-    oidc_client_config: &OIDCConfig,
-    conf: &AuthentikConfig,
-) -> reqwest::Result<SecretResult> {
-    let secret = if !oidc_client_config.is_public {
-        generate_secret()
-    } else {
-        String::with_capacity(0)
-    };
-    let generated_app = generate_application(name, oidc_client_config, &secret);
-    let res = CLIENT
-        .post(&format!(
-            "{}/api/v3/core/applications/",
-            conf.authentik_url
-        ))
-        .bearer_auth(token)
-        .json(&generated_app)
-        .send()
-        .await?;
-    // Create groups for this client
-    create_groups(name, token, conf).await?;
-    match res.status() {
-        StatusCode::CREATED => {
-            println!("Client for {name} created.");
-            if !oidc_client_config.is_public {
-                let client_id = generated_app
-                    .get("clientId")
-                    .and_then(Value::as_str)
-                    .expect("Always present");
-                add_service_account_roles(token, client_id, conf).await?;
-            }
-            Ok(SecretResult::Created(secret))
-        }
-        StatusCode::CONFLICT => {
-            let conflicting_client = get_client(name, token, oidc_client_config, conf).await?;
-            if client_configs_match(&conflicting_client, &generated_client) {
-                Ok(SecretResult::AlreadyExisted(conflicting_client
-                    .as_object()
-                    .and_then(|o| o.get("secret"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_owned()))
-            } else {
-                Ok(CLIENT
-                    .put(&format!(
-                        "{}/admin/realms/{}/clients/{}",
-                        conf.keycloak_url,
-                        conf.keycloak_realm,
-                        conflicting_client
-                            .get("clientId")
-                            .and_then(Value::as_str)
-                            .expect("We have a valid client")
-                    ))
-                    .bearer_auth(token)
-                    .json(&generated_client)
-                    .send()
-                    .await?
-                    .status()
-                    .is_success()
-                    .then_some(SecretResult::AlreadyExisted(secret))
-                    .expect("We know the client already exists so updating should be successful"))
-            }
-        }
-        s => unreachable!("Unexpected statuscode {s} while creating keycloak client. {res:?}"),
-    }
-}
 
 
 fn generate_secret() -> String {

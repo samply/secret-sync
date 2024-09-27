@@ -1,17 +1,19 @@
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use shared::{OIDCConfig, SecretResult};
+use crate::auth::authentik::group::create_groups;
 use crate::auth::authentik::AuthentikConfig;
 use crate::CLIENT;
 
+#[derive(Deserialize, Serialize, Debug)]
+struct Token {
+    access_token: String,
+}
 
 #[tokio::test]
 async fn get_access_test() {
     let path_url = "http://localhost:9000/application/o/token/";
-    #[derive(Deserialize, Serialize, Debug)]
-    struct Token {
-        access_token: String,
-    }
     let response = CLIENT
         .post(path_url)
         .form(&json!({
@@ -37,10 +39,6 @@ async fn get_access_test() {
 #[cfg(test)]
 // nicht möglich mit authentik
 async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
-    #[derive(serde::Deserialize)]
-    struct Token {
-        access_token: String,
-    }
     CLIENT
         .post(&format!(
             "{}/application/o/token/",
@@ -58,13 +56,16 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
         .await
         .map(|t| t.access_token)
 }
-/*
+
 #[cfg(test)]
-async fn setup_keycloak() -> reqwest::Result<(String, AuthentikConfig)> {
-    let token = get_access_token_via_admin_login().await?;
+async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
+    //let token = get_access_token_via_admin_login().await?;
+    let token = Token{
+        access_token: "kNaiFgKRew9nOJIy2TT4hDs2jIHR9TxVilFmqmqGtHRM2oike8yYv5pfKkq1".to_owned()
+    };
     let res = CLIENT
-        .post("http://localhost:1337/admin/realms/master/client-scopes")
-        .bearer_auth(&token)
+        .post("http://localhost:9000/api/v3/core/applications/")
+        .bearer_auth(&token.access_token)
         .json(&json!({
             "name": "groups",
             "protocol": "openid-connect"
@@ -73,19 +74,18 @@ async fn setup_keycloak() -> reqwest::Result<(String, AuthentikConfig)> {
         .await?;
     dbg!(&res.status());
     Ok((
-        token,
+        token.access_token,
         AuthentikConfig {
-            keycloak_url: "http://localhost:1337".parse().unwrap(),
-            keycloak_id: "unused in tests".into(),
-            keycloak_secret: "unused in tests".into(),
-            keycloak_realm: "master".into(),
-            keycloak_service_account_roles: vec!["query-users".into(), "view-users".into()],
-            keycloak_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
+            authentik_url: "http://localhost:9000".parse().unwrap(),
+            authentik_id: "unused in tests".into(),
+            authentik_secret: "unused in tests".into(),
+            authentik_service_account_roles: vec!["query-users".into(), "view-users".into()],
+            authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
         },
     ))
 }
 
-
+/*
 #[ignore = "Requires setting up a keycloak"]
 #[tokio::test]
 async fn test_create_client() -> reqwest::Result<()> {
@@ -111,16 +111,13 @@ async fn test_create_client() -> reqwest::Result<()> {
 
     Ok(())
 }
+*/
 
-#[ignore = "Requires setting up a keycloak"]
 #[tokio::test]
 async fn service_account_test() -> reqwest::Result<()> {
-    let (token, conf) = setup_keycloak().await?;
+    let (token, conf) = setup_authentik().await?;
     create_groups("test", &token, &conf).await?;
     // dbg!(get_realm_permission_roles(&token, &conf).await?);
     // add_service_account_roles(&token, "test-private", &conf).await?;
     Ok(())
 }
-
-
-    */
