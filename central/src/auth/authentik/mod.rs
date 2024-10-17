@@ -124,11 +124,3 @@ fn generate_secret() -> String {
         .collect()
 }
 
-pub async fn create_application(
-    name: &str,
-    oidc_client_config: OIDCConfig,
-    conf: &AuthentikConfig,
-) -> reqwest::Result<SecretResult> {
-    let token = get_access_token(conf).await?;
-    post_application(&token, name, &oidc_client_config, conf).await
-}
