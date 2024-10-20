@@ -18,8 +18,8 @@ async fn get_access_test() {
         .post(path_url)
         .form(&json!({
             "grant_type": "client_credentials",
-            "client_id": "MI4DbeyktmjbXJRmUY9tkWvhK7yOzly139EgzhPZ",
-            "client_secret": "YGcFnXQMI7HqeDUWClhTkZmPtYj4aB2z3khnoMNpCo8CgTOhUqqOFE56dP2WOJoPGOeqdPsVCrR4yvjnJviYK6dY8WeykDqnzAO1xCLHOsPxefcSAa21qe0ru2bwWBi7",
+            "client_id": "UtKuQ4Yh7xsPOqI8yRH86azKhEjSmrQMo2MyrvNi",
+            "client_secret": "wFfVgSj1w25xpIvpZGad0nLU1NglYUSYMpPyzhbptDPEGlLlaJ0lHStEN0HHuiHMtTlqMtJoMIa2Ye4psz8EBMLdliahsqYatgcmMEYPvTL3BK0bS1YLVzhhXbxgzVgi",
             "scope": "openid"
         }))
         .send()
@@ -61,7 +61,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token{
-        access_token: "kNaiFgKRew9nOJIy2TT4hDs2jIHR9TxVilFmqmqGtHRM2oike8yYv5pfKkq1".to_owned()
+        access_token: "jq65BCuTfAq0gIGbNeHd3KiFwI2gMbxoI258d2P5BY2OPInCT7Fja3CVV07U".to_owned()
     };
     let res = CLIENT
         .post("http://localhost:9000/api/v3/core/applications/")
@@ -79,7 +79,6 @@ async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
             authentik_url: "http://localhost:9000".parse().unwrap(),
             authentik_id: "unused in tests".into(),
             authentik_secret: "unused in tests".into(),
-            authentik_service_account_roles: vec!["query-users".into(), "view-users".into()],
             authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
         },
     ))

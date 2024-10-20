@@ -6,7 +6,7 @@ use shared::{SecretResult, OIDCConfig};
 
 use crate::auth::keycloak::{KeyCloakConfig, self};
 
-use super::authentik::AuthentikConfig;
+use super::authentik::{self, AuthentikConfig};
 
 /// Central secret sync
 #[derive(Debug, Parser)]
@@ -36,13 +36,23 @@ pub enum OIDCProvider {
 
 impl OIDCProvider {
     pub fn try_init() -> Option<Self> {
-        KeyCloakConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Keycloak)
+        match KeyCloakConfig::try_parse() {
+            Ok(res) => return Some(OIDCProvider::Keycloak(res)),
+            Err(e) => println!("{e}")
+        } 
+        match AuthentikConfig::try_parse() {
+            Ok(res) => return Some(OIDCProvider::Authentik(res)),
+            Err(e) => println!("{e}") 
+        }
+        //KeyCloakConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Keycloak)
+        //AuthentikConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Authentik))
+        None
     }
 
     pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
         match self {
             OIDCProvider::Keycloak(conf) => keycloak::create_client(name, oidc_client_config, conf).await,
-            OIDCProvider::Authentik(conf) => todo!("create Authentik")
+            OIDCProvider::Authentik(conf) => authentik::app::create_application(name, oidc_client_config, conf).await
         }.map_err(|e| {
             println!("Failed to create client: {e}");
             "Error creating OIDC client".into()
@@ -59,7 +69,14 @@ impl OIDCProvider {
                         "Failed to validate client. See upstrean logs.".into()
                     })
             },
-            OIDCProvider::Authentik(conf) => todo!("create Authentik")
+            OIDCProvider::Authentik(conf) => {
+                authentik::validate_application(name, oidc_client_config, secret, conf)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Failed to validate client {name}: {e}");
+                        "Failed to validate client. See upstrean logs.".into()
+                    })
+            }
         }
     }
 }

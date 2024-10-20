@@ -1,8 +1,9 @@
 mod test;
 mod group;
-mod app;
+pub mod app;
 
 use crate::CLIENT;
+use app::generate_app_values;
 use beam_lib::reqwest::{self, StatusCode, Url};
 use clap::Parser;
 use group::create_groups;
@@ -20,9 +21,8 @@ pub struct AuthentikConfig {
     #[clap(long, env)]
     pub authentik_secret: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
-    pub authentik_service_account_roles: Vec<String>,
-    #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_groups_per_bh: Vec<String>,
+
 }
 
 async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
@@ -85,12 +85,12 @@ async fn compare_applications(
     secret: &str,
 ) -> Result<bool, reqwest::Error> {
     let client = get_application(name, token, oidc_client_config, conf).await?;
-    let wanted_client = generate_application(name, oidc_client_config, secret);
+    let wanted_client = generate_app_values(name, name, oidc_client_config, secret);
     Ok(client.get("secret") == wanted_client.get("secret")
-        && client_configs_match(&client, &wanted_client))
+        && app_configs_match(&client, &wanted_client))
 }
 
-fn client_configs_match(a: &Value, b: &Value) -> bool {
+fn app_configs_match(a: &Value, b: &Value) -> bool {
     let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| a
         .get(key)
         .and_then(Value::as_array)
@@ -99,7 +99,8 @@ fn client_configs_match(a: &Value, b: &Value) -> bool {
             .and_then(Value::as_array)
             .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
         );
-    
+    // Todo! compare values test
+    todo!("compare keys must be changed");
     a.get("name") == b.get("name")
         && includes_other_json_array("defaultClientScopes", &|a_v, v| a_v.contains(v))
         && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
