@@ -1,7 +1,8 @@
-use std::{net::SocketAddr, convert::Infallible};
+use std::{collections::HashMap, convert::Infallible, net::SocketAddr};
 
 use beam_lib::{AppId, reqwest::Url};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use shared::{SecretResult, OIDCConfig};
 
 use crate::auth::keycloak::{KeyCloakConfig, self};
@@ -26,6 +27,7 @@ pub struct Config {
     /// The app id of this application
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub beam_id: AppId,
+    
 }
 
 #[derive(Clone, Debug)]
@@ -80,3 +82,10 @@ impl OIDCProvider {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FlowPropertymapping {
+    pub authorization_flow: String,
+    pub property_mapping: HashMap<String, String>
+}
+

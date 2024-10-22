@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Duration};
 
 use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskResult, AppId};
 use clap::Parser;
-use auth::config::{Config, OIDCProvider};
+use auth::config::{Config, FlowPropertymapping, OIDCProvider};
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
 

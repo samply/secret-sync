@@ -1,4 +1,5 @@
-use crate::CLIENT;
+use crate::auth::authentik::CLIENT;
+use crate::auth::config::FlowPropertymapping;
 use beam_lib::reqwest::{self, Response, StatusCode, Url};
 use clap::Parser;
 use group::create_groups;
@@ -6,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
-use super::{app_configs_match, generate_secret, get_access_token, get_application, group, AuthentikConfig};
+use super::{app_configs_match, generate_secret, get_access_token, get_application, get_property_mappings_uuids, group, AuthentikConfig};
 
 pub async fn create_application(
     name: &str,
@@ -62,14 +63,26 @@ async fn generate_application(
 async fn generate_provider(name: &str, oidc_client_config: &OIDCConfig, secret: &str, conf: &AuthentikConfig, token: &str)
 -> Result<(), String>
 {
+    let mapping = FlowPropertymapping::new(conf, token).await.expect("missing flow or property");
+    
     let secret = (!oidc_client_config.is_public).then_some(secret);
     let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
         let mut json = json!({
         "name": id,
         "client_id": id,
-        "authorization_flow": "", // flow uuid
+        "authorization_flow": mapping.authorization_flow,
+        "property_mappings": [
+            mapping.property_mapping.get("web-origins"),
+            mapping.property_mapping.get("acr"),
+            mapping.property_mapping.get("profile"),
+            mapping.property_mapping.get("roles"),
+            mapping.property_mapping.get("email"),
+            mapping.property_mapping.get("microprofile-jwt"),
+            mapping.property_mapping.get("groups")
+        ],
         "redirect_uris": oidc_client_config.redirect_urls,
     });
+    
     if oidc_client_config.is_public {
         json.as_object_mut().unwrap().insert("client_type".to_owned(), "public".into()); 
     } else {
@@ -113,7 +126,7 @@ pub async fn combine_application(
 
     let res = generate_application(name, name, oidc_client_config, &secret, conf, token).await?;
     match res.status() {
-        StatusCode::CREATED => {
+        StatusCode::OK => {
             println!("Client for {name} created.");
             if !oidc_client_config.is_public {
                 let client_id = generate_app_values(name, name, oidc_client_config, &secret)

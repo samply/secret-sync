@@ -30,7 +30,8 @@ pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> reqw
         .send()
         .await?;
     match res.status() {
-         StatusCode::CREATED => println!("Created group {name}"),
+        StatusCode::CREATED => println!("Created group {name}"),
+        StatusCode::OK => println!("Created group {name}"),
         StatusCode::CONFLICT => println!("Group {name} already existed"),
         s => unreachable!("Unexpected statuscode {s} while creating group {name}")
     }

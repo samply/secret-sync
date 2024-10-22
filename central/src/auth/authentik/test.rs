@@ -2,8 +2,9 @@ use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shared::{OIDCConfig, SecretResult};
+use crate::auth::authentik::app::{combine_application, generate_app_values};
 use crate::auth::authentik::group::create_groups;
-use crate::auth::authentik::AuthentikConfig;
+use crate::auth::authentik::{app_configs_match, compare_applications, get_application, AuthentikConfig};
 use crate::CLIENT;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -61,18 +62,8 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token{
-        access_token: "jq65BCuTfAq0gIGbNeHd3KiFwI2gMbxoI258d2P5BY2OPInCT7Fja3CVV07U".to_owned()
+        access_token: "ztIT7PfCQKm2Y2VFEr2IVKs4ehvtBesBWRj71PhOZIGrLoKpDoRtO0mPUlGC".to_owned()
     };
-    let res = CLIENT
-        .post("http://localhost:9000/api/v3/core/applications/")
-        .bearer_auth(&token.access_token)
-        .json(&json!({
-            "name": "groups",
-            "protocol": "openid-connect"
-        }))
-        .send()
-        .await?;
-    dbg!(&res.status());
     Ok((
         token.access_token,
         AuthentikConfig {
@@ -84,39 +75,45 @@ async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     ))
 }
 
-/*
-#[ignore = "Requires setting up a keycloak"]
+
 #[tokio::test]
 async fn test_create_client() -> reqwest::Result<()> {
-    let (token, conf) = setup_keycloak().await?;
-    let name = "test";
+    let (token, conf) = setup_authentik().await?;
+    let name = "home";
     // public client
     let client_config = OIDCConfig { is_public: true, redirect_urls: vec!["http://foo/bar".into()] };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(combine_application(&token, name, &client_config, &conf).await?) else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
-    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
-    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+    let c = dbg!(get_application(name, &token, &client_config, &conf).await.unwrap());
+    assert!(app_configs_match(&c, &generate_app_values(name, name, &client_config, &pw)));
+    assert!(dbg!(compare_applications(&token, name, &client_config, &conf, &pw).await?));
 
     // private client
     let client_config = OIDCConfig { is_public: false, redirect_urls: vec!["http://foo/bar".into()] };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(combine_application(&token, name, &client_config, &conf).await?) else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
-    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
-    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+    let c = dbg!(get_application(name, &token, &client_config, &conf).await.unwrap());
+    assert!(app_configs_match(&c, &generate_app_values(name, name, &client_config, &pw)));
+    assert!(dbg!(compare_applications(&token, name, &client_config, &conf, &pw).await?));
 
     Ok(())
 }
-*/
+
 
 #[tokio::test]
-async fn service_account_test() -> reqwest::Result<()> {
+async fn group_test() -> reqwest::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    create_groups("test", &token, &conf).await?;
+    create_groups("em", &token, &conf).await?;
     // dbg!(get_realm_permission_roles(&token, &conf).await?);
     // add_service_account_roles(&token, "test-private", &conf).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_flow_property() -> reqwest::Result<()> {
+    let (token, conf) = setup_authentik().await?;
+    
     Ok(())
 }

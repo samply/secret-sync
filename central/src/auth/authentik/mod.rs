@@ -2,14 +2,17 @@ mod test;
 mod group;
 pub mod app;
 
+use std::collections::HashMap;
+
 use crate::CLIENT;
 use app::generate_app_values;
-use beam_lib::reqwest::{self, StatusCode, Url};
-use clap::Parser;
-use group::create_groups;
+use beam_lib::reqwest::{self, Url};
+use clap::{builder::Str, Parser};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use shared::{OIDCConfig, SecretResult};
+use shared::OIDCConfig;
+
+use super::config::FlowPropertymapping;
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -22,7 +25,30 @@ pub struct AuthentikConfig {
     pub authentik_secret: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_groups_per_bh: Vec<String>,
+}
 
+// ctruct is in config
+impl FlowPropertymapping {
+    async fn new(conf: &AuthentikConfig, token: &str) -> Option<Self> {
+        let flow_key = "authorization_flow";
+        let property_keys = vec![
+            "web-origins",
+            "acr",
+            "profile",
+            "roles",
+            "email",
+            "microprofile-jwt",
+            "groups"
+        ];
+        let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
+        let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
+        let property_mapping = get_property_mappings_uuids(property_url, conf, token, property_keys).await;
+        let authorization_flow = get_uuid(flow_url, conf, token, flow_key).await; // flow uuid
+        return Some(FlowPropertymapping{
+            authorization_flow,
+            property_mapping
+        });
+    }
 }
 
 async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
@@ -99,15 +125,59 @@ fn app_configs_match(a: &Value, b: &Value) -> bool {
             .and_then(Value::as_array)
             .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
         );
-    // Todo! compare values test
-    todo!("compare keys must be changed");
     a.get("name") == b.get("name")
-        && includes_other_json_array("defaultClientScopes", &|a_v, v| a_v.contains(v))
+        && includes_other_json_array("authorization_flow", &|a_v, v| a_v.contains(v))
         && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("protocolMappers", &|a_v, v| a_v.iter().any(|a_v| a_v.get("name") == v.get("name")))
+        && includes_other_json_array("property_mappings", &|a_v, v| a_v.iter().any(|a_v| a_v.get("name") == v.get("name")))
 }
 
+async fn get_uuid(target_url: &str, conf: &AuthentikConfig, token: &str, search_key: &str) -> String {
+    println!("{:?}", search_key);
+    let target_value: reqwest::Result<serde_json::Value> = CLIENT
+    .get(&format!(
+        "{}{}{}",
+        conf.authentik_url,
+        target_url,
+        search_key
+    ))
+    .bearer_auth(token)
+    .send()
+    .await
+    .expect("test faild {search_key}" )
+    .json()
+    .await
+    .into();
+    println!("{:?}", target_value);
 
+    // pk is the uuid for this result
+            target_value
+            .expect("flow or propertymapping type is not present")
+            .as_object()
+            .and_then(|o| {
+                let res= o.get("results");
+                println!("{:?}", res);
+                res
+            })
+            .and_then(Value::as_array)
+            .and_then(|a| {
+                let res = a.get(0);
+                println!("{:?}", res);
+                res
+            })
+            .and_then(|o| o.as_object())
+            .and_then(|o| o.get("pk"))
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| "default-pk-value")
+            .to_string()
+        }
+
+async fn get_property_mappings_uuids(target_url: &str, conf: &AuthentikConfig, token: &str, search_key: Vec<&str>) -> HashMap<String, String> {
+    let mut result: HashMap<String, String> = HashMap::new();
+    for key in search_key {
+        result.insert(key.to_string(), get_uuid(target_url, conf, token, key).await);
+    }
+    result
+}
 
 fn generate_secret() -> String {
     use rand::Rng;
