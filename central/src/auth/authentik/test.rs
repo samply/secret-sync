@@ -4,7 +4,7 @@ use serde_json::json;
 use shared::{OIDCConfig, SecretResult};
 use crate::auth::authentik::app::{combine_application, generate_app_values};
 use crate::auth::authentik::group::create_groups;
-use crate::auth::authentik::{app_configs_match, compare_applications, get_application, AuthentikConfig};
+use crate::auth::authentik::{app_configs_match, compare_applications, get_application, get_uuid, AuthentikConfig};
 use crate::CLIENT;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -62,7 +62,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token{
-        access_token: "ztIT7PfCQKm2Y2VFEr2IVKs4ehvtBesBWRj71PhOZIGrLoKpDoRtO0mPUlGC".to_owned()
+        access_token: "iLAxhzywZhZUHKyCuk2ZPRDFxGJYNml0oTs78qF82kTlUyp5JRGVc4UrL2V8".to_owned()
     };
     Ok((
         token.access_token,
@@ -105,15 +105,21 @@ async fn test_create_client() -> reqwest::Result<()> {
 #[tokio::test]
 async fn group_test() -> reqwest::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    create_groups("em", &token, &conf).await?;
+    create_groups("e", &token, &conf).await?;
     // dbg!(get_realm_permission_roles(&token, &conf).await?);
     // add_service_account_roles(&token, "test-private", &conf).await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn test_flow_property() -> reqwest::Result<()> {
-    let (token, conf) = setup_authentik().await?;
+async fn test_flow_property() {
+    let (token, conf) = setup_authentik().await.expect("Cannot setup authentik as test");
+    let test_key = "groups";
+    let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
+    let res = get_uuid(flow_url, &conf, &token, test_key).await;
+    if res.is_empty() {
+    } else {
+        dbg!(res);    
+    }
     
-    Ok(())
 }
