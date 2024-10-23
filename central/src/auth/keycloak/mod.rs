@@ -33,7 +33,7 @@ async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
     }
     CLIENT
         .post(&format!(
-            "{}/realms/{}/protocol/openid-connect/token",
+            "{}realms/{}/protocol/openid-connect/token",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .form(&json!({
@@ -81,7 +81,7 @@ async fn get_client(
     let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
     CLIENT
         .get(&format!(
-            "{}/admin/realms/{}/clients/{id}",
+            "{}admin/realms/{}/clients/{id}",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
@@ -234,7 +234,7 @@ async fn post_client(
     let generated_client = generate_client(name, oidc_client_config, &secret);
     let res = CLIENT
         .post(&format!(
-            "{}/admin/realms/{}/clients",
+            "{}admin/realms/{}/clients",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
@@ -267,7 +267,7 @@ async fn post_client(
             } else {
                 Ok(CLIENT
                     .put(&format!(
-                        "{}/admin/realms/{}/clients/{}",
+                        "{}admin/realms/{}/clients/{}",
                         conf.keycloak_url,
                         conf.keycloak_realm,
                         conflicting_client
@@ -304,7 +304,7 @@ async fn create_groups(name: &str, token: &str, conf: &KeyCloakConfig) -> reqwes
 async fn post_group(name: &str, token: &str, conf: &KeyCloakConfig) -> reqwest::Result<()> {
     let res = CLIENT
         .post(&format!(
-            "{}/admin/realms/{}/groups",
+            "{}admin/realms/{}/groups",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
@@ -369,7 +369,7 @@ async fn add_service_account_roles(
         id: String,
     }
     let service_account_id = CLIENT.get(&format!(
-            "{}/admin/realms/{}/clients/{}/service-account-user",
+            "{}admin/realms/{}/clients/{}/service-account-user",
             conf.keycloak_url, conf.keycloak_realm, client_id
         ))
         .bearer_auth(token)
@@ -387,7 +387,7 @@ async fn add_service_account_roles(
     assert_eq!(roles.len(), conf.keycloak_service_account_roles.len(), "Failed to find all required service account roles got {roles:#?} but expected all of these: {:#?}", conf.keycloak_service_account_roles);
     let realm_id = roles[0].container_id.clone();
     CLIENT.post(&format!(
-            "{}/admin/realms/{}/users/{}/role-mappings/clients/{}",
+            "{}admin/realms/{}/users/{}/role-mappings/clients/{}",
             conf.keycloak_url, conf.keycloak_realm, service_account_id, realm_id
         ))
         .bearer_auth(token)
@@ -419,7 +419,7 @@ async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwe
         "realm-management"
     };
     let res = CLIENT.get(&format!(
-            "{}/admin/realms/{}/clients/?q={permission_realm}&search",
+            "{}admin/realms/{}/clients/?q={permission_realm}&search",
             conf.keycloak_url, conf.keycloak_realm
         ))
         .bearer_auth(token)
@@ -431,7 +431,7 @@ async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwe
         .find(|v| v.client_id.starts_with(permission_realm))
         .expect(&format!("Failed to find realm id for {permission_realm}"));
     CLIENT.get(&format!(
-            "{}/admin/realms/{}/clients/{}/roles",
+            "{}admin/realms/{}/clients/{}/roles",
             conf.keycloak_url, conf.keycloak_realm, role_client.id
         ))
         .bearer_auth(token)
