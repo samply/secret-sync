@@ -12,6 +12,8 @@ struct Token {
     access_token: String,
 }
 
+
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn get_access_test() {
     let path_url = "http://localhost:9000/application/o/token/";
@@ -75,7 +77,7 @@ async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     ))
 }
 
-
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> reqwest::Result<()> {
     let (token, conf) = setup_authentik().await?;
@@ -101,7 +103,7 @@ async fn test_create_client() -> reqwest::Result<()> {
     Ok(())
 }
 
-
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn group_test() -> reqwest::Result<()> {
     let (token, conf) = setup_authentik().await?;
@@ -111,6 +113,7 @@ async fn group_test() -> reqwest::Result<()> {
     Ok(())
 }
 
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_flow_property() {
     let (token, conf) = setup_authentik().await.expect("Cannot setup authentik as test");
