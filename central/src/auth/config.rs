@@ -1,10 +1,13 @@
-use std::{net::SocketAddr, convert::Infallible};
+use std::{collections::HashMap, convert::Infallible, net::SocketAddr};
 
 use beam_lib::{AppId, reqwest::Url};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use shared::{SecretResult, OIDCConfig};
 
-use crate::keycloak::{KeyCloakConfig, self};
+use crate::auth::keycloak::{KeyCloakConfig, self};
+
+use super::authentik::{self, AuthentikConfig};
 
 /// Central secret sync
 #[derive(Debug, Parser)]
@@ -24,21 +27,31 @@ pub struct Config {
     /// The app id of this application
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub beam_id: AppId,
+    
 }
 
 #[derive(Clone, Debug)]
 pub enum OIDCProvider {
-    Keycloak(KeyCloakConfig)
+    Keycloak(KeyCloakConfig),
+    Authentik(AuthentikConfig)
 }
 
 impl OIDCProvider {
     pub fn try_init() -> Option<Self> {
-        KeyCloakConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Keycloak)
+        match (KeyCloakConfig::try_parse(), AuthentikConfig::try_parse()) {
+            (Ok(key), _) => Some(OIDCProvider::Keycloak(key)),
+            (_, Ok(auth)) => Some(OIDCProvider::Authentik(auth)),
+            (Err(e), _) => {
+                eprintln!("{e:#?}");
+                None
+            }
+        }
     }
 
     pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
         match self {
             OIDCProvider::Keycloak(conf) => keycloak::create_client(name, oidc_client_config, conf).await,
+            OIDCProvider::Authentik(conf) => authentik::app::create_application(name, oidc_client_config, conf).await
         }.map_err(|e| {
             println!("Failed to create client: {e}");
             "Error creating OIDC client".into()
@@ -55,6 +68,21 @@ impl OIDCProvider {
                         "Failed to validate client. See upstrean logs.".into()
                     })
             },
+            OIDCProvider::Authentik(conf) => {
+                authentik::validate_application(name, oidc_client_config, secret, conf)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Failed to validate client {name}: {e}");
+                        "Failed to validate client. See upstrean logs.".into()
+                    })
+            }
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FlowPropertymapping {
+    pub authorization_flow: String,
+    pub property_mapping: HashMap<String, String>
+}
+
