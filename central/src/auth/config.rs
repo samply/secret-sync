@@ -83,7 +83,7 @@ impl OIDCProvider {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlowPropertymapping {
     pub authorization_flow: String,
     pub property_mapping: HashMap<String, String>

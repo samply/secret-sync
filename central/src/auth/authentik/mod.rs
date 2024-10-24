@@ -2,7 +2,7 @@ mod test;
 mod group;
 pub mod app;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Mutex};
 
 use crate::CLIENT;
 use app::generate_app_values;
@@ -29,7 +29,11 @@ pub struct AuthentikConfig {
 
 // ctruct is in config
 impl FlowPropertymapping {
-    async fn new(conf: &AuthentikConfig, token: &str) -> Option<Self> {
+    async fn new(conf: &AuthentikConfig, token: &str) -> reqwest::Result<Self> {
+        static PROPERTY_MAPPING_CACHE: Mutex<Option<FlowPropertymapping>> = Mutex::new(None);
+        if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
+            return Ok(flow.clone());
+        }
         let flow_key = "authorization_flow";
         let property_keys = vec![
             "web-origins",
@@ -44,10 +48,12 @@ impl FlowPropertymapping {
         let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
         let property_mapping = get_property_mappings_uuids(property_url, conf, token, property_keys).await;
         let authorization_flow = get_uuid(flow_url, conf, token, flow_key).await; // flow uuid
-        return Some(FlowPropertymapping{
+        let mapping = FlowPropertymapping{
             authorization_flow,
             property_mapping
-        });
+        };
+        *PROPERTY_MAPPING_CACHE.lock().unwrap() = Some(mapping.clone());
+        Ok(mapping)
     }
 }
 
