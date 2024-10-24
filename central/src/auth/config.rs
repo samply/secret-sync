@@ -38,17 +38,14 @@ pub enum OIDCProvider {
 
 impl OIDCProvider {
     pub fn try_init() -> Option<Self> {
-        match KeyCloakConfig::try_parse() {
-            Ok(res) => return Some(OIDCProvider::Keycloak(res)),
-            Err(e) => println!("{e}")
-        } 
-        match AuthentikConfig::try_parse() {
-            Ok(res) => return Some(OIDCProvider::Authentik(res)),
-            Err(e) => println!("{e}") 
+        match (KeyCloakConfig::try_parse(), AuthentikConfig::try_parse()) {
+            (Ok(key), _) => Some(OIDCProvider::Keycloak(key)),
+            (_, Ok(auth)) => Some(OIDCProvider::Authentik(auth)),
+            (Err(e), _) => {
+                eprintln!("{e:#?}");
+                None
+            }
         }
-        //KeyCloakConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Keycloak)
-        //AuthentikConfig::try_parse().map_err(|e| println!("{e}")).ok().map(Self::Authentik))
-        None
     }
 
     pub async fn create_client(&self, name: &str, oidc_client_config: OIDCConfig) -> Result<SecretResult, String> {
