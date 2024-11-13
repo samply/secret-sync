@@ -1,18 +1,21 @@
-mod test;
-mod group;
 mod app;
+mod group;
 mod provider;
+mod test;
 
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::CLIENT;
+use crate::{get_beamclient, CLIENT};
 use anyhow::bail;
-use app::{app_configs_match, check_app_result, compare_applications, generate_app_values, generate_application, get_application};
+use app::{
+    app_configs_match, check_app_result, compare_applications, generate_app_values,
+    generate_application, get_application,
+};
 use beam_lib::reqwest::{self, Url};
 use clap::{builder::Str, Parser};
 use group::create_groups;
 use provider::{generate_provider_values, get_provider, provider_configs_match};
-use reqwest::StatusCode;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
@@ -47,29 +50,32 @@ impl FlowPropertymapping {
             "roles",
             "email",
             "microprofile-jwt",
-            "groups"
+            "groups",
         ];
         let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
         let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
-        let property_mapping = get_property_mappings_uuids(property_url, conf, token, property_keys).await;
-        let authorization_flow = get_uuid(flow_url, conf, token, flow_key).await.expect("No default flow present"); // flow uuid
-        let mapping = FlowPropertymapping{
+        let property_mapping =
+            get_property_mappings_uuids(property_url, conf, token, property_keys).await;
+        let authorization_flow = get_uuid(flow_url, conf, token, flow_key, &get_beamclient())
+            .await
+            .expect("No default flow present"); // flow uuid
+        let mapping = FlowPropertymapping {
             authorization_flow,
-            property_mapping
+            property_mapping,
         };
         *PROPERTY_MAPPING_CACHE.lock().unwrap() = Some(mapping.clone());
         Ok(mapping)
     }
 }
 
-
 pub async fn validate_application(
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> anyhow::Result<bool> {
     let token = get_access_token(conf).await?;
-    compare_applications(&token, name, oidc_client_config, conf).await
+    compare_applications(&token, name, oidc_client_config, conf, client).await
 }
 
 pub async fn create_app_provider(
@@ -78,7 +84,7 @@ pub async fn create_app_provider(
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
     let token = get_access_token(conf).await?;
-    combine_app_provider(&token, name, &oidc_client_config, conf).await
+    combine_app_provider(&token, name, &oidc_client_config, conf, &get_beamclient()).await
 }
 
 pub async fn combine_app_provider(
@@ -86,43 +92,43 @@ pub async fn combine_app_provider(
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> anyhow::Result<SecretResult> {
     let secret = if !oidc_client_config.is_public {
         generate_secret()
     } else {
         String::with_capacity(0)
     };
-    let generated_provider = generate_provider_values(name, oidc_client_config, &secret, conf, token)
+    let generated_provider =
+        generate_provider_values(name, oidc_client_config, &secret, conf, token).await?;
+    let provider_res = client
+        .post(&format!("{}/api/v3/providers/oauth2/", conf.authentik_url))
+        .bearer_auth(token)
+        .json(&generated_provider)
+        .send()
         .await?;
-    let provider_res = CLIENT
-    .post(&format!(
-        "{}/api/v3/providers/oauth2/",
-        conf.authentik_url
-    ))
-    .bearer_auth(token)
-    .json(&generated_provider)
-    .send()
-    .await?;
     // Create groups for this client
-    create_groups(name, token, conf).await?;
+    create_groups(name, token, conf, client).await?;
     match provider_res.status() {
         StatusCode::CREATED => {
             println!("Client for {name} created.");
-            check_app_result(token, name, oidc_client_config, conf).await?;
+            check_app_result(token, name, oidc_client_config, conf, client).await?;
             Ok(SecretResult::Created(secret))
         }
         StatusCode::CONFLICT => {
             let conflicting_provider = get_provider(name, token, oidc_client_config, conf).await?;
             if provider_configs_match(&conflicting_provider, &generated_provider) {
-                check_app_result(token, name, oidc_client_config, conf).await?;
-                Ok(SecretResult::AlreadyExisted(conflicting_provider
-                    .as_object()
-                    .and_then(|o| o.get("client_secret"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_owned()))
+                check_app_result(token, name, oidc_client_config, conf, client).await?;
+                Ok(SecretResult::AlreadyExisted(
+                    conflicting_provider
+                        .as_object()
+                        .and_then(|o| o.get("client_secret"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned(),
+                ))
             } else {
-                Ok(CLIENT
+                Ok(client
                     .put(&format!(
                         "{}/api/v3/providers/oauth2/{}",
                         conf.authentik_url,
@@ -145,44 +151,52 @@ pub async fn combine_app_provider(
     }
 }
 
-
-async fn get_uuid(target_url: &str, conf: &AuthentikConfig, token: &str, search_key: &str) -> Option<String> {
+async fn get_uuid(
+    target_url: &str,
+    conf: &AuthentikConfig,
+    token: &str,
+    search_key: &str,
+    client: &Client,
+) -> Option<String> {
     println!("{:?}", search_key);
-    let target_value: serde_json::Value = CLIENT
-    .get(&format!(
-        "{}{}{}",
-        conf.authentik_url,
-        target_url,
-        search_key
-    ))
-    .bearer_auth(token)
-    .send()
-    .await
-    .ok()?
-    .json()
-    .await
-    .ok()?;
+    let target_value: serde_json::Value = client
+        .get(&format!(
+            "{}{}{}",
+            conf.authentik_url, target_url, search_key
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
     // pk is the uuid for this result
-            target_value
-            .as_object()
-            .and_then(|o| {
-                 o.get("results")            
-                })
-            .and_then(Value::as_array)
-            .and_then(|a| {
-                a.get(0)
-            })
-            .and_then(|o| o.as_object())
-            .and_then(|o| o.get("pk"))
-            .and_then(Value::as_str)
-            .map(|s| s.to_string())
+    target_value
+        .as_object()
+        .and_then(|o| o.get("results"))
+        .and_then(Value::as_array)
+        .and_then(|a| a.get(0))
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("pk"))
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
+}
 
-        }
-
-async fn get_property_mappings_uuids(target_url: &str, conf: &AuthentikConfig, token: &str, search_key: Vec<&str>) -> HashMap<String, String> {
+async fn get_property_mappings_uuids(
+    target_url: &str,
+    conf: &AuthentikConfig,
+    token: &str,
+    search_key: Vec<&str>,
+) -> HashMap<String, String> {
     let mut result: HashMap<String, String> = HashMap::new();
     for key in search_key {
-        result.insert(key.to_string(), get_uuid(target_url, conf, token, key).await.expect(&format!("Property: {:?}", key)));
+        result.insert(
+            key.to_string(),
+            get_uuid(target_url, conf, token, key, &get_beamclient())
+                .await
+                .expect(&format!("Property: {:?}", key)),
+        );
     }
     result
 }
@@ -209,10 +223,7 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
         access_token: String,
     }
     CLIENT
-        .post(&format!(
-            "{}/application/o/token/",
-            conf.authentik_url
-        ))
+        .post(&format!("{}/application/o/token/", conf.authentik_url))
         .form(&json!({
             "grant_type": "client_credentials",
             "client_id": conf.authentik_id,

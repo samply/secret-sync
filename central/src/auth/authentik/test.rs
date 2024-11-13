@@ -4,7 +4,7 @@ use crate::auth::authentik::{
     app_configs_match, combine_app_provider, compare_applications, get_application, get_uuid,
     AuthentikConfig,
 };
-use crate::CLIENT;
+use crate::{get_beamclient, CLIENT};
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,10 +16,10 @@ struct Token {
 }
 
 #[cfg(test)]
-async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
+pub async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token {
-        access_token: "NXChuwYcHBf4ggcg1VdWdwKaEgqNxwl07nWLSnBsAK27YHNTdi0z45K6Ioun".to_owned(),
+        access_token: "sgihMevO0egohcQWPiT3bGnvr7iSQaBVc5IDhnIriHg2s40hgOroj45MxkED".to_owned(),
     };
     Ok((
         token.access_token,
@@ -83,7 +83,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
         .map(|t| t.access_token)
 }
 
-//#[ignore = "Requires setting up a authentik"]
+// #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
@@ -94,19 +94,21 @@ async fn test_create_client() -> anyhow::Result<()> {
         redirect_urls: vec!["http://foo/bar".into()],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
+        dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
     else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_application(name, &token, &client_config, &conf)
-        .await
-        .unwrap());
+    let c = dbg!(
+        get_application(name, &token, &client_config, &conf, &get_beamclient())
+            .await
+            .unwrap()
+    );
     assert!(app_configs_match(
         &c,
         &generate_app_values(name, name, &client_config)
     ));
     assert!(dbg!(
-        compare_applications(&token, name, &client_config, &conf).await?
+        compare_applications(&token, name, &client_config, &conf, &get_beamclient()).await?
     ));
 
     // private client
@@ -115,19 +117,21 @@ async fn test_create_client() -> anyhow::Result<()> {
         redirect_urls: vec!["http://foo/bar".into()],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
+        dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
     else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_application(name, &token, &client_config, &conf)
-        .await
-        .unwrap());
+    let c = dbg!(
+        get_application(name, &token, &client_config, &conf, &get_beamclient())
+            .await
+            .unwrap()
+    );
     assert!(app_configs_match(
         &c,
         &generate_app_values(name, name, &client_config)
     ));
     assert!(dbg!(
-        compare_applications(&token, name, &client_config, &conf).await?
+        compare_applications(&token, name, &client_config, &conf, &get_beamclient()).await?
     ));
 
     Ok(())
@@ -137,7 +141,7 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    create_groups("team", &token, &conf).await
+    create_groups("uuuu", &token, &conf, &get_beamclient()).await
 }
 
 // #[ignore = "Requires setting up a authentik"]
@@ -148,8 +152,17 @@ async fn test_flow() {
         .expect("Cannot setup authentik as test");
     let test_key = "authorization_flow";
     let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
-    let res = get_uuid(flow_url, &conf, &token, test_key).await;
-    dbg!(res);
+    let res = get_uuid(flow_url, &conf, &token, test_key, &get_beamclient()).await;
+    dbg!(&res);
+    match res {
+        Some(uuid) => {
+            println!("Found: {}", uuid);
+            assert!(!uuid.is_empty(), "empty");
+        }
+        None => {
+            panic!("Expected {}", test_key);
+        }
+    }
 }
 
 // #[ignore = "Requires setting up a authentik"]
@@ -160,11 +173,11 @@ async fn test_property() {
         .expect("Cannot setup authentik as test");
     let test_key = "web-origins";
     let flow_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=groups";
-    let res = get_uuid(flow_url, &conf, &token, test_key).await;
+    let res = get_uuid(flow_url, &conf, &token, test_key, &get_beamclient()).await;
     dbg!(res);
 }
 
-//#[ignore = "Requires setting up a authentik"]
+// #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn create_property() {
     let (token, conf) = setup_authentik()
@@ -177,7 +190,7 @@ async fn create_property() {
     "expression": ext
     });
     let propperty_url = "/api/v3/propertymappings/source/oauth/";
-    let res = CLIENT
+    let res = get_beamclient()
         .post(&format!("{}{}", conf.authentik_url, propperty_url))
         .bearer_auth(token)
         .json(&json_property)

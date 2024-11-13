@@ -1,15 +1,12 @@
 use crate::auth::authentik::CLIENT;
 use beam_lib::reqwest::{self, Response, StatusCode};
+use reqwest::Client;
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 
 use super::AuthentikConfig;
 
-pub fn generate_app_values(
-    provider: &str,
-    name: &str,
-    oidc_client_config: &OIDCConfig,
-) -> Value {
+pub fn generate_app_values(provider: &str, name: &str, oidc_client_config: &OIDCConfig) -> Value {
     let id = format!(
         "{name}-{}",
         if oidc_client_config.is_public {
@@ -33,15 +30,12 @@ pub async fn generate_application(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     token: &str,
+    client: &Client,
 ) -> reqwest::Result<Response> {
-    CLIENT
+    client
         .post(&format!("{}/api/v3/core/applications/", conf.authentik_url))
         .bearer_auth(token)
-        .json(&generate_app_values(
-            provider,
-            name,
-            oidc_client_config,
-        ))
+        .json(&generate_app_values(provider, name, oidc_client_config))
         .send()
         .await
 }
@@ -51,16 +45,21 @@ pub async fn check_app_result(
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> anyhow::Result<bool> {
-    let res = generate_application(name, name, oidc_client_config, conf, token).await?;
+    let res = generate_application(name, name, oidc_client_config, conf, token, client).await?;
     match res.status() {
         StatusCode::OK => {
-            println!("Application for {name} created.");            
-            return Ok(true)
+            println!("Application for {name} created.");
+            return Ok(true);
         }
         StatusCode::CONFLICT => {
-            let conflicting_client = get_application(name, token, oidc_client_config, conf).await?;
-            if app_configs_match(&conflicting_client, &generate_app_values(name, name, oidc_client_config)) {
+            let conflicting_client =
+                get_application(name, token, oidc_client_config, conf, client).await?;
+            if app_configs_match(
+                &conflicting_client,
+                &generate_app_values(name, name, oidc_client_config),
+            ) {
                 Ok(true)
             } else {
                 Ok(CLIENT
@@ -82,15 +81,14 @@ pub async fn check_app_result(
         }
         s => anyhow::bail!("Unexpected statuscode {s} while creating keycloak client. {res:?}"),
     }
-
 }
-
 
 pub async fn get_application(
     name: &str,
     token: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> reqwest::Result<serde_json::Value> {
     let id = format!(
         "{name}-{}",
@@ -100,7 +98,7 @@ pub async fn get_application(
             "private"
         }
     );
-    CLIENT
+    client
         .get(&format!(
             "{}/api/v3/core/applications/{id}/",
             conf.authentik_url
@@ -117,11 +115,14 @@ pub async fn compare_applications(
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> anyhow::Result<bool> {
-    let client = get_application(name, token, oidc_client_config, conf).await?;
+    let client = get_application(name, token, oidc_client_config, conf, client).await?;
     let wanted_client = generate_app_values(name, name, oidc_client_config);
-    Ok(client.get("client_secret") == wanted_client.get("client_ secret")
-        && app_configs_match(&client, &wanted_client))
+    Ok(
+        client.get("client_secret") == wanted_client.get("client_ secret")
+            && app_configs_match(&client, &wanted_client),
+    )
 }
 
 pub fn app_configs_match(a: &Value, b: &Value) -> bool {
@@ -141,3 +142,4 @@ pub fn app_configs_match(a: &Value, b: &Value) -> bool {
             a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
         })
 }
+
