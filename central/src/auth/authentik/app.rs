@@ -1,4 +1,3 @@
-use crate::auth::authentik::CLIENT;
 use beam_lib::reqwest::{self, Response, StatusCode};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -62,7 +61,7 @@ pub async fn check_app_result(
             ) {
                 Ok(true)
             } else {
-                Ok(CLIENT
+                Ok(client
                     .put(&format!(
                         "{}/api/v3/core/applicaions/{}",
                         conf.authentik_url,

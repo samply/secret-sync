@@ -5,7 +5,7 @@ mod test;
 
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::{get_beamclient, CLIENT};
+use crate::get_beamclient;
 use anyhow::bail;
 use app::{
     app_configs_match, check_app_result, compare_applications, generate_app_values,
@@ -110,13 +110,14 @@ pub async fn combine_app_provider(
     // Create groups for this client
     create_groups(name, token, conf, client).await?;
     match provider_res.status() {
-        StatusCode::CREATED => {
+        StatusCode::OK => {
             println!("Client for {name} created.");
             check_app_result(token, name, oidc_client_config, conf, client).await?;
             Ok(SecretResult::Created(secret))
         }
         StatusCode::CONFLICT => {
-            let conflicting_provider = get_provider(name, token, oidc_client_config, conf).await?;
+            let conflicting_provider =
+                get_provider(name, token, oidc_client_config, conf, client).await?;
             if provider_configs_match(&conflicting_provider, &generated_provider) {
                 check_app_result(token, name, oidc_client_config, conf, client).await?;
                 Ok(SecretResult::AlreadyExisted(
@@ -147,7 +148,7 @@ pub async fn combine_app_provider(
                     .expect("We know the provider already exists so updating should be successful"))
             }
         }
-        s => bail!("Unexpected statuscode {s} while creating keycloak client. {provider_res:?}"),
+        s => bail!("Unexpected statuscode {s} while creating authentik client. {provider_res:?}"),
     }
 }
 
@@ -222,7 +223,7 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
     struct Token {
         access_token: String,
     }
-    CLIENT
+    get_beamclient()
         .post(&format!("{}/application/o/token/", conf.authentik_url))
         .form(&json!({
             "grant_type": "client_credentials",

@@ -1,9 +1,9 @@
 use anyhow::Ok;
-use reqwest::{Response, StatusCode};
+use reqwest::{Client, Response, StatusCode};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
-use crate::{auth::config::FlowPropertymapping, get_beamclient, CLIENT};
+use crate::{auth::config::FlowPropertymapping, get_beamclient};
 
 use super::{get_uuid, AuthentikConfig};
 
@@ -63,6 +63,7 @@ pub async fn get_provider(
     token: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
+    client: &Client,
 ) -> reqwest::Result<serde_json::Value> {
     let id = format!(
         "{name}-{}",
@@ -73,10 +74,10 @@ pub async fn get_provider(
         }
     );
     let provider_url = "/api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
-    let pk = get_uuid(&provider_url, conf, token, &id, &get_beamclient())
+    let pk = get_uuid(&provider_url, conf, token, &id, client)
         .await
         .expect(&format!("Property: {:?}", id));
-    CLIENT
+    client
         .get(&format!(
             "{}/api/v3/providers/oauth2/{pk}/",
             conf.authentik_url
@@ -94,8 +95,9 @@ pub async fn compare_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     secret: &str,
+    client: &Client,
 ) -> anyhow::Result<bool> {
-    let client = get_provider(name, token, oidc_client_config, conf).await?;
+    let client = get_provider(name, token, oidc_client_config, conf, client).await?;
     let wanted_client =
         generate_provider_values(name, oidc_client_config, secret, conf, token).await?;
     Ok(

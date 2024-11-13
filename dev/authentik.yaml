@@ -1,0 +1,54 @@
+version: "3"
+
+services:
+  local:
+    build:
+      context: ../
+      dockerfile: Dockerfile.local
+    image: samply/secret-sync-local:latest
+    environment:
+      - PROXY_ID=proxy1.broker
+      - OIDC_PROVIDER=app2.proxy2.broker
+      - BROKER_URL=http://broker:8080
+      - SECRET_DEFINITIONS=${ARGS}
+    volumes:
+      # Path can be configuard via CACHE_PATH this container path is the default
+      - ${CACHE_PATH}:/usr/local/cache
+    extra_hosts:
+      - "broker:${BROKER_IP}"
+    secrets:
+      - privkey.pem
+      - root.crt.pem
+
+  central:
+    build:
+      context: ../
+      dockerfile: Dockerfile.central
+    image: samply/secret-sync-central:latest
+    depends_on:
+      - authentik
+    environment:
+      - BEAM_URL=http://proxy:8082
+      - BEAM_ID=app2.proxy2.broker
+      - BEAM_SECRET=App1Secret
+      - AUTHENTIK_URL=http://authentik:9000
+      - AUTHENTIK_ID=admin
+      - AUTHENTIK_SECRET=admin
+      - AUTHENTIK_SERVICE_ACCOUNT_ROLES=query-users
+    extra_hosts:
+      - "proxy:${PROXY_IP}"
+    
+  authentik:
+    image: beryju/authentik:latest
+    command: start-dev
+    ports:
+      - "9000:9000"
+    environment:
+      - PG_PASS=admin
+      - AUTHENTIK_SECRET_KEY=admin
+
+secrets:
+  privkey.pem:
+    file: ${BEAM_DIR}/dev/pki/proxy1.priv.pem
+  root.crt.pem:
+    file: ${BEAM_DIR}/dev/pki/root.crt.pem

@@ -19,7 +19,7 @@ struct Token {
 pub async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token {
-        access_token: "sgihMevO0egohcQWPiT3bGnvr7iSQaBVc5IDhnIriHg2s40hgOroj45MxkED".to_owned(),
+        access_token: "WYKYEMRAJF0y2hBuBZfP1sDvEE7rBkoYFodsCXIuXK0SR3RukJyYfPHrnEfk".to_owned(),
     };
     Ok((
         token.access_token,
@@ -87,7 +87,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    let name = "office";
+    let name = "window";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -141,7 +141,7 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    create_groups("uuuu", &token, &conf, &get_beamclient()).await
+    create_groups("qqqq", &token, &conf, &get_beamclient()).await
 }
 
 // #[ignore = "Requires setting up a authentik"]
@@ -172,7 +172,7 @@ async fn test_property() {
         .await
         .expect("Cannot setup authentik as test");
     let test_key = "web-origins";
-    let flow_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=groups";
+    let flow_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
     let res = get_uuid(flow_url, &conf, &token, test_key, &get_beamclient()).await;
     dbg!(res);
 }
