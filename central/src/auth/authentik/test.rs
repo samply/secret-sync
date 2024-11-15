@@ -1,5 +1,5 @@
 use crate::auth::authentik::app::generate_app_values;
-use crate::auth::authentik::group::create_groups;
+use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::{
     app_configs_match, combine_app_provider, compare_applications, get_application, get_uuid,
     AuthentikConfig,
@@ -19,7 +19,7 @@ struct Token {
 pub async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token {
-        access_token: "WYKYEMRAJF0y2hBuBZfP1sDvEE7rBkoYFodsCXIuXK0SR3RukJyYfPHrnEfk".to_owned(),
+        access_token: "1xkspjuyWAREk6tKAy4Fw7sIwnKCPfZF0zs6VdHTTIRm6yo2EjTyKAMxQMs2".to_owned(),
     };
     Ok((
         token.access_token,
@@ -83,8 +83,8 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
         .map(|t| t.access_token)
 }
 
-// #[ignore = "Requires setting up a authentik"]
-#[tokio::test]
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
     let name = "window";
@@ -141,11 +141,12 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
-    create_groups("qqqq", &token, &conf, &get_beamclient()).await
+    post_group("single", &token, &conf).await
+    //create_groups("next1", &token, &conf, &get_beamclient()).await
 }
 
-// #[ignore = "Requires setting up a authentik"]
-#[tokio::test]
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_flow() {
     let (token, conf) = setup_authentik()
         .await
@@ -165,8 +166,8 @@ async fn test_flow() {
     }
 }
 
-// #[ignore = "Requires setting up a authentik"]
-#[tokio::test]
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_property() {
     let (token, conf) = setup_authentik()
         .await
@@ -177,13 +178,13 @@ async fn test_property() {
     dbg!(res);
 }
 
-// #[ignore = "Requires setting up a authentik"]
-#[tokio::test]
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test(flavor = "multi_thread")]
 async fn create_property() {
     let (token, conf) = setup_authentik()
         .await
         .expect("Cannot setup authentik as test");
-    let acr = "test".to_owned();
+    let acr = "web-origins".to_owned();
     let ext = "return{}".to_owned();
     let json_property = json!({
     "name": acr,

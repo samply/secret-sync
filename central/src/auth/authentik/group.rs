@@ -20,18 +20,14 @@ pub async fn create_groups(
     };
     let name = capitalize(name);
     for group in &conf.authentik_groups_per_bh {
-        post_group(&group.replace('#', &name), token, conf, CLIENT).await?;
+        post_group(&group.replace('#', &name), token, conf).await?;
     }
     Ok(())
 }
 
-pub async fn post_group(
-    name: &str,
-    token: &str,
-    conf: &AuthentikConfig,
-    CLIENT: &Client,
-) -> anyhow::Result<()> {
-    let res = CLIENT
+pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder().build().unwrap();
+    let res = client
         .post(&format!("{}/api/v3/core/groups/", conf.authentik_url))
         .bearer_auth(token)
         .json(&json!({

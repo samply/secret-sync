@@ -26,26 +26,26 @@ services:
       dockerfile: Dockerfile.central
     image: samply/secret-sync-central:latest
     depends_on:
-      - authentik
+      - keycloak
     environment:
       - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
       - BEAM_SECRET=App1Secret
-      - AUTHENTIK_URL=http://authentik:9000
-      - AUTHENTIK_ID=admin
-      - AUTHENTIK_SECRET=admin
-      - AUTHENTIK_SERVICE_ACCOUNT_ROLES=query-users
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_ID=admin
+      - KEYCLOAK_SECRET=admin
+      - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users
     extra_hosts:
       - "proxy:${PROXY_IP}"
     
-  authentik:
-    image: beryju/authentik:latest
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
     command: start-dev
     ports:
-      - "9000:9000"
+      - "1337:8080"
     environment:
-      - PG_PASS=admin
-      - AUTHENTIK_SECRET_KEY=admin
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
 
 secrets:
   privkey.pem:

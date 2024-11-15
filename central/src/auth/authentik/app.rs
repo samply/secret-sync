@@ -141,4 +141,3 @@ pub fn app_configs_match(a: &Value, b: &Value) -> bool {
             a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
         })
 }
-
