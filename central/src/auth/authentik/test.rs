@@ -19,7 +19,7 @@ struct Token {
 pub async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token {
-        access_token: "1xkspjuyWAREk6tKAy4Fw7sIwnKCPfZF0zs6VdHTTIRm6yo2EjTyKAMxQMs2".to_owned(),
+        access_token: "161ycDK4e1es7pRPIAnkLH5zmRvj8dglfjXqOSyjic7sTaqqZwE8V5Z9lqEx".to_owned(),
     };
     Ok((
         token.access_token,
@@ -138,7 +138,7 @@ async fn test_create_client() -> anyhow::Result<()> {
 }
 
 //#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn group_test() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik().await?;
     post_group("single", &token, &conf).await
