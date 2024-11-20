@@ -26,9 +26,10 @@ pub async fn create_groups(
 }
 
 pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
-    let client = reqwest::Client::builder().build().unwrap();
+    let client = reqwest::Client::new();
+
     let res = client
-        .post(&format!("{}/api/v3/core/groups/", conf.authentik_url))
+        .post(conf.authentik_url.join("api/v3/core/groups/")?)
         .bearer_auth(token)
         .json(&json!({
             "name": name
@@ -38,8 +39,8 @@ pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyh
     match res.status() {
         StatusCode::CREATED => println!("Created group {name}"),
         StatusCode::OK => println!("Created group {name}"),
-        StatusCode::CONFLICT => println!("Group {name} already existed"),
-        s => anyhow::bail!("Unexpected statuscode {s} while creating group {name}"),
+        StatusCode::BAD_REQUEST => println!("Group {name} already existed"),
+        s => anyhow::bail!("Unexpected statuscode {s} while creating group {name}: {:#?}", res.json::<serde_json::Value>().await.unwrap_or_default()),
     }
     Ok(())
 }

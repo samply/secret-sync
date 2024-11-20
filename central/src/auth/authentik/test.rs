@@ -16,10 +16,10 @@ struct Token {
 }
 
 #[cfg(test)]
-pub async fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
+pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
     //let token = get_access_token_via_admin_login().await?;
     let token = Token {
-        access_token: "161ycDK4e1es7pRPIAnkLH5zmRvj8dglfjXqOSyjic7sTaqqZwE8V5Z9lqEx".to_owned(),
+        access_token: "ecSepyVwTIQzGO3tPzUuNLl5Rp5KSbs4AhJup1PUMsGD1h1dSUvs3HT3uhgK".to_owned(),
     };
     Ok((
         token.access_token,
@@ -86,7 +86,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_create_client() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik().await?;
+    let (token, conf) = setup_authentik()?;
     let name = "window";
     // public client
     let client_config = OIDCConfig {
@@ -138,9 +138,9 @@ async fn test_create_client() -> anyhow::Result<()> {
 }
 
 //#[ignore = "Requires setting up a authentik"]
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik().await?;
+    let (token, conf) = setup_authentik()?;
     post_group("single", &token, &conf).await
     //create_groups("next1", &token, &conf, &get_beamclient()).await
 }
@@ -149,7 +149,6 @@ async fn group_test() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_flow() {
     let (token, conf) = setup_authentik()
-        .await
         .expect("Cannot setup authentik as test");
     let test_key = "authorization_flow";
     let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
@@ -170,7 +169,6 @@ async fn test_flow() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_property() {
     let (token, conf) = setup_authentik()
-        .await
         .expect("Cannot setup authentik as test");
     let test_key = "web-origins";
     let flow_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
@@ -182,7 +180,6 @@ async fn test_property() {
 #[tokio::test(flavor = "multi_thread")]
 async fn create_property() {
     let (token, conf) = setup_authentik()
-        .await
         .expect("Cannot setup authentik as test");
     let acr = "web-origins".to_owned();
     let ext = "return{}".to_owned();
