@@ -13,7 +13,7 @@ services:
       - SECRET_DEFINITIONS=${ARGS}
     volumes:
       # Path can be configuard via CACHE_PATH this container path is the default
-      - ${CACHE_PATH}:/usr/local/cache
+      - ${CACHE_PATH:-/tmp/asdf}:/usr/local/cache
     extra_hosts:
       - "broker:${BROKER_IP}"
     secrets:
@@ -26,7 +26,8 @@ services:
       dockerfile: Dockerfile.central
     image: samply/secret-sync-central:latest
     depends_on:
-      - authentik
+      - worker
+      - server
     environment:
       - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
