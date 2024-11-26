@@ -1,12 +1,13 @@
 use std::i64;
 
+use anyhow::Context;
 use beam_lib::reqwest::{self, Response, StatusCode};
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use tracing::{debug, info};
 
-use super::AuthentikConfig;
+use super::{get_uuid, provider::get_provider, AuthentikConfig};
 
 pub fn generate_app_values(provider: i64, name: &str, oidc_client_config: &OIDCConfig) -> Value {
     let id = format!(
@@ -130,9 +131,13 @@ pub async fn compare_applications(
     conf: &AuthentikConfig,
     client: &Client,
 ) -> anyhow::Result<bool> {
+    let provider_pk = get_provider(name, token, oidc_client_config, conf, client)
+        .await?
+        .get("pk")
+        .and_then(|v| v.as_i64())
+        .unwrap();
     let client = get_application(name, token, oidc_client_config, conf, client).await?;
-    let test = 27;
-    let wanted_client = generate_app_values(test, name, oidc_client_config);
+    let wanted_client = generate_app_values(provider_pk, name, oidc_client_config);
     Ok(
         client.get("client_secret") == wanted_client.get("client_secret")
             && app_configs_match(&client, &wanted_client),

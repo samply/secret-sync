@@ -1,8 +1,10 @@
+use std::i64;
+
 use anyhow::{Context, Ok};
 use reqwest::{Client, Response, StatusCode, Url};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
-use tracing::debug;
+use tracing::{debug, field::debug};
 
 use crate::auth::config::FlowPropertymapping;
 
@@ -26,6 +28,7 @@ pub async fn generate_provider_values(
             "private"
         }
     );
+    // only one redirect url is possible
     let mut json = json!({
         "name": id,
         "client_id": id,
@@ -59,6 +62,34 @@ pub async fn generate_provider_values(
     Ok(json)
 }
 
+async fn get_provider_id(
+    target_url: &Url,
+    token: &str,
+    search_key: &str,
+    client: &Client,
+) -> Option<i64> {
+    let target_value: serde_json::Value = client
+        .get(target_url.to_owned())
+        .query(&[("search", search_key)])
+        .bearer_auth(token)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    debug!("Value search key {search_key}: {:?}", &target_value);
+    // pk is the uuid for this result
+    target_value
+        .as_object()
+        .and_then(|o| o.get("results"))
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("pk"))
+        .and_then(|v| v.as_i64())
+}
+
 pub async fn get_provider(
     name: &str,
     token: &str,
@@ -82,17 +113,20 @@ pub async fn get_provider(
     )
     .unwrap();
 
-    let pk = get_uuid(&query_url, token, &id, client)
-        .await
-        .context(format!("Property: {:?}", id))?;
+    let res = get_provider_id(&query_url, token, &id, client).await;
+    debug!(res);
+    let pk = res.unwrap();
     let mut base_url = conf
         .authentik_url
-        .join("api/v3/providers/oauth2/")
+        .join(&format!("api/v3/providers/oauth2/{pk}/"))
         .context("Error parsing provider")?;
-    {
-        let mut provider_url = base_url.path_segments_mut().unwrap();
-        provider_url.push(&pk);
-    }
+    /*
+        {
+            let mut provider_url = base_url.path_segments_mut().unwrap();
+            provider_url.push(&pk);
+        }
+    */
+
     client
         .get(base_url)
         .bearer_auth(token)
@@ -115,6 +149,8 @@ pub async fn compare_provider(
     let client = get_provider(name, token, oidc_client_config, conf, client).await?;
     let wanted_client =
         generate_provider_values(name, oidc_client_config, secret, conf, token).await?;
+    debug!("{:#?}", client);
+    debug!("{:#?}", wanted_client);
     Ok(
         client.get("client_secret") == wanted_client.get("client_secret")
             && provider_configs_match(&client, &wanted_client),
@@ -132,9 +168,7 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             })
     };
     a.get("name") == b.get("name")
-        && includes_other_json_array("authorization_flow", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("property_mappings", &|a_v, v| {
-            a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
-        })
+        && a.get("authorization_flow") == b.get("authorization_flow")
+        && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
+        && a.get("redirect_uris") == b.get("redirect_uris")
 }

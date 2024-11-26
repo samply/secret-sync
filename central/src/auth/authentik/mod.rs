@@ -142,9 +142,10 @@ pub async fn combine_app_provider(
             check_app_result(token, name, provider_pk, oidc_client_config, conf, client).await?;
             Ok(SecretResult::Created(secret))
         }
-        StatusCode::CONFLICT => {
+        StatusCode::BAD_REQUEST => {
             let conflicting_provider =
                 get_provider(name, token, oidc_client_config, conf, client).await?;
+            debug!("{:#?}", conflicting_provider);
             if compare_provider(token, name, oidc_client_config, conf, &secret, client).await? {
                 info!("Provider {name} existed.");
                 Ok(SecretResult::AlreadyExisted(

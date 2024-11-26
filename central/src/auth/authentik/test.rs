@@ -98,11 +98,11 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "leaf";
+    let name = "pipe";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
-        redirect_urls: vec!["ttp://foo/bar".into()],
+        redirect_urls: vec!["http://foo/bar".into()],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
         dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
