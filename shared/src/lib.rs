@@ -1,11 +1,10 @@
 use std::ops::Deref;
 
-use serde::{Serialize, Deserialize};
-
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequest {
-    OpenIdConnect(OIDCConfig)
+    OpenIdConnect(OIDCConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -18,16 +17,16 @@ pub struct OIDCConfig {
 pub enum SecretResult {
     AlreadyValid,
     Created(String),
-    AlreadyExisted(String)
+    AlreadyExisted(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequestType {
     ValidateOrCreate {
         current: String,
-        request: SecretRequest
+        request: SecretRequest,
     },
-    Create(SecretRequest)
+    Create(SecretRequest),
 }
 
 impl Deref for SecretRequestType {
@@ -35,8 +34,8 @@ impl Deref for SecretRequestType {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            SecretRequestType::ValidateOrCreate { request, .. } |
-            SecretRequestType::Create(request) => request,
+            SecretRequestType::ValidateOrCreate { request, .. }
+            | SecretRequestType::Create(request) => request,
         }
     }
 }

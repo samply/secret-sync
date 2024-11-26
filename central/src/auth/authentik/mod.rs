@@ -14,11 +14,12 @@ use app::{
 use beam_lib::reqwest::{self, Url};
 use clap::{builder::Str, Parser};
 use group::create_groups;
-use provider::{generate_provider_values, get_provider, provider_configs_match};
+use provider::{compare_provider, generate_provider_values, get_provider, provider_configs_match};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
+use tracing::{debug, field::debug, info};
 
 use super::config::FlowPropertymapping;
 
@@ -52,11 +53,32 @@ impl FlowPropertymapping {
             "microprofile-jwt",
             "groups",
         ];
-        let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
-        let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
-        let property_mapping =
-            get_property_mappings_uuids(property_url, conf, token, property_keys).await;
-        let authorization_flow = get_uuid(flow_url, conf, token, flow_key, &get_beamclient())
+        //let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
+        let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
+        let flow_url = Url::parse_with_params(
+            base_url.as_str(),
+            &[("orderung", "slug"), ("page", "1"), ("page_size", "20")],
+        )
+        .unwrap();
+
+        //let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
+        let base_url = conf
+            .authentik_url
+            .join("api/v3/propertymappings/all/")
+            .unwrap();
+        let query_url = Url::parse_with_params(
+            base_url.as_str(),
+            &[
+                ("managed__isnull", "true"),
+                ("ordering", "name"),
+                ("page", "1"),
+                ("page_size", "20"),
+            ],
+        )
+        .unwrap();
+
+        let property_mapping = get_property_mappings_uuids(&query_url, token, property_keys).await;
+        let authorization_flow = get_uuid(&flow_url, token, flow_key, &get_beamclient())
             .await
             .expect("No default flow present"); // flow uuid
         let mapping = FlowPropertymapping {
@@ -101,25 +123,30 @@ pub async fn combine_app_provider(
     };
     let generated_provider =
         generate_provider_values(name, oidc_client_config, &secret, conf, token).await?;
+    debug!("{:#?}", generated_provider);
     let provider_res = client
-        .post(&format!("{}/api/v3/providers/oauth2/", conf.authentik_url))
+        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
         .bearer_auth(token)
         .json(&generated_provider)
         .send()
         .await?;
     // Create groups for this client
     create_groups(name, token, conf, client).await?;
+    dbg!(&provider_res);
     match provider_res.status() {
-        StatusCode::OK => {
-            println!("Client for {name} created.");
-            check_app_result(token, name, oidc_client_config, conf, client).await?;
+        StatusCode::CREATED => {
+            let pk: serde_json::Value = provider_res.json().await?;
+            let provider_pk = pk.get("pk").and_then(|v| v.as_i64()).unwrap();
+            debug!("{:?}", provider_pk);
+            info!("Provider for {name} created.");
+            check_app_result(token, name, provider_pk, oidc_client_config, conf, client).await?;
             Ok(SecretResult::Created(secret))
         }
         StatusCode::CONFLICT => {
             let conflicting_provider =
                 get_provider(name, token, oidc_client_config, conf, client).await?;
-            if provider_configs_match(&conflicting_provider, &generated_provider) {
-                check_app_result(token, name, oidc_client_config, conf, client).await?;
+            if compare_provider(token, name, oidc_client_config, conf, &secret, client).await? {
+                info!("Provider {name} existed.");
                 Ok(SecretResult::AlreadyExisted(
                     conflicting_provider
                         .as_object()
@@ -130,14 +157,14 @@ pub async fn combine_app_provider(
                 ))
             } else {
                 Ok(client
-                    .put(&format!(
-                        "{}/api/v3/providers/oauth2/{}",
-                        conf.authentik_url,
-                        conflicting_provider
-                            .get("pk")
-                            .and_then(Value::as_str)
-                            .expect("We have a valid client")
-                    ))
+                    .put(
+                        conf.authentik_url.join("api/v3/providers/oauth2/")?.join(
+                            conflicting_provider
+                                .get("pk")
+                                .and_then(Value::as_str)
+                                .expect("We have a valid client"),
+                        )?,
+                    )
                     .bearer_auth(token)
                     .json(&generated_provider)
                     .send()
@@ -148,23 +175,21 @@ pub async fn combine_app_provider(
                     .expect("We know the provider already exists so updating should be successful"))
             }
         }
-        s => bail!("Unexpected statuscode {s} while creating authentik client. {provider_res:?}"),
+        s => bail!(
+            "Unexpected statuscode {s} while creating authentik app and provider. {provider_res:?}"
+        ),
     }
 }
 
 async fn get_uuid(
-    target_url: &str,
-    conf: &AuthentikConfig,
+    target_url: &Url,
     token: &str,
     search_key: &str,
     client: &Client,
 ) -> Option<String> {
-    println!("{:?}", search_key);
     let target_value: serde_json::Value = client
-        .get(&format!(
-            "{}{}{}",
-            conf.authentik_url, target_url, search_key
-        ))
+        .get(target_url.to_owned())
+        .query(&[("search", search_key)])
         .bearer_auth(token)
         .send()
         .await
@@ -172,12 +197,13 @@ async fn get_uuid(
         .json()
         .await
         .ok()?;
+    debug!("Value search key {search_key}: {:?}", &target_value);
     // pk is the uuid for this result
     target_value
         .as_object()
         .and_then(|o| o.get("results"))
         .and_then(Value::as_array)
-        .and_then(|a| a.get(0))
+        .and_then(|a| a.first())
         .and_then(|o| o.as_object())
         .and_then(|o| o.get("pk"))
         .and_then(Value::as_str)
@@ -185,8 +211,7 @@ async fn get_uuid(
 }
 
 async fn get_property_mappings_uuids(
-    target_url: &str,
-    conf: &AuthentikConfig,
+    target_url: &Url,
     token: &str,
     search_key: Vec<&str>,
 ) -> HashMap<String, String> {
@@ -194,7 +219,7 @@ async fn get_property_mappings_uuids(
     for key in search_key {
         result.insert(
             key.to_string(),
-            get_uuid(target_url, conf, token, key, &get_beamclient())
+            get_uuid(target_url, token, key, &get_beamclient())
                 .await
                 .expect(&format!("Property: {:?}", key)),
         );
@@ -224,7 +249,11 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
         access_token: String,
     }
     get_beamclient()
-        .post(&format!("{}/application/o/token/", conf.authentik_url))
+        .post(
+            conf.authentik_url
+                .join("application/o/token/")
+                .expect("Error parsing token url"),
+        )
         .form(&json!({
             "grant_type": "client_credentials",
             "client_id": conf.authentik_id,

@@ -1,10 +1,13 @@
 use std::{collections::HashSet, time::Duration};
 
-use auth::config::{Config, FlowPropertymapping, OIDCProvider};
+use auth::config::{Config, OIDCProvider};
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
+use futures::FutureExt;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretRequestType, SecretResult};
+use tokio::time::sleep;
+use tracing::info;
 
 mod auth;
 
@@ -19,7 +22,7 @@ pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
 });
 
 pub fn get_beamclient() -> Client {
-    return Client::new();
+    Client::new()
 }
 
 pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
@@ -28,9 +31,11 @@ pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
     // TODO: Remove once beam feature/stream-tasks is merged
     let mut seen = HashSet::new();
     let block_one = BlockingOptions::from_count(1);
+    let retry_timer = sleep(Duration::from_secs(0)).fuse();
     // TODO: Fast shutdown
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
@@ -53,6 +58,38 @@ async fn main() {
             }
         }
     }
+    /*
+     loop {
+         tokio::select! {
+             _ = shutdown_signal() => {
+                 break;
+             },
+             result =  BEAM_CLIENT.poll_pending_tasks(&block_one) => {
+                 match result {
+                 Ok(tasks) => tasks.into_iter().for_each(|task| {
+                 if !seen.contains(&task.id) {
+                     seen.insert(task.id);
+                     tokio::spawn(handle_task(task));
+                 }
+                 }),
+                 Err(beam_lib::BeamError::ReqwestError(e)) if e.is_connect() => {
+                 eprintln!(
+                     "Failed to connect to beam proxy on {}. Retrying in 30s",
+                     CONFIG.beam_url
+                 );
+                 tokio::time::sleep(Duration::from_secs(30)).await
+                 }
+                 Err(e) => {
+                 eprintln!("Error during task polling {e}");
+                 tokio::time::sleep(Duration::from_secs(5)).await;
+                 }
+
+                 }
+
+             }
+         }
+    }
+     */
 }
 
 pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
@@ -118,4 +155,11 @@ pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Resu
                 .await
         }
     }
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Expect shutdown signal handler");
+    info!("Shutdown recieved");
 }

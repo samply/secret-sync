@@ -1,5 +1,5 @@
-mod test;
 mod client;
+mod test;
 
 use crate::CLIENT;
 use anyhow::bail;
@@ -31,7 +31,6 @@ pub struct KeyCloakConfig {
     pub keycloak_groups_per_bh: Vec<String>,
 }
 
-
 pub async fn create_client(
     name: &str,
     oidc_client_config: OIDCConfig,
@@ -40,7 +39,6 @@ pub async fn create_client(
     let token = get_access_token(conf).await?;
     post_client(&token, name, &oidc_client_config, conf).await
 }
-
 
 pub async fn validate_client(
     name: &str,
@@ -51,7 +49,6 @@ pub async fn validate_client(
     let token = get_access_token(conf).await?;
     compare_clients(&token, name, oidc_client_config, conf, secret).await
 }
-
 
 async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
     #[derive(serde::Deserialize)]
@@ -78,7 +75,11 @@ async fn get_access_token(conf: &KeyCloakConfig) -> reqwest::Result<String> {
 async fn create_groups(name: &str, token: &str, conf: &KeyCloakConfig) -> anyhow::Result<()> {
     let capitalize = |s: &str| {
         let mut chrs = s.chars();
-        chrs.next().map(char::to_uppercase).map(Iterator::collect).unwrap_or(String::new()) + chrs.as_str()
+        chrs.next()
+            .map(char::to_uppercase)
+            .map(Iterator::collect)
+            .unwrap_or(String::new())
+            + chrs.as_str()
     };
     let name = capitalize(name);
     for group in &conf.keycloak_groups_per_bh {
@@ -102,7 +103,7 @@ async fn post_group(name: &str, token: &str, conf: &KeyCloakConfig) -> anyhow::R
     match res.status() {
         StatusCode::CREATED => println!("Created group {name}"),
         StatusCode::CONFLICT => println!("Group {name} already existed"),
-        s => bail!("Unexpected statuscode {s} while creating group {name}")
+        s => bail!("Unexpected statuscode {s} while creating group {name}"),
     }
     Ok(())
 }
@@ -135,7 +136,8 @@ async fn add_service_account_roles(
     struct UserIdExtractor {
         id: String,
     }
-    let service_account_id = CLIENT.get(&format!(
+    let service_account_id = CLIENT
+        .get(&format!(
             "{}admin/realms/{}/clients/{}/service-account-user",
             conf.keycloak_url, conf.keycloak_realm, client_id
         ))
@@ -153,7 +155,8 @@ async fn add_service_account_roles(
 
     assert_eq!(roles.len(), conf.keycloak_service_account_roles.len(), "Failed to find all required service account roles got {roles:#?} but expected all of these: {:#?}", conf.keycloak_service_account_roles);
     let realm_id = roles[0].container_id.clone();
-    CLIENT.post(&format!(
+    CLIENT
+        .post(&format!(
             "{}admin/realms/{}/users/{}/role-mappings/clients/{}",
             conf.keycloak_url, conf.keycloak_realm, service_account_id, realm_id
         ))
@@ -170,22 +173,26 @@ struct ServiceAccountRole {
     id: String,
     #[serde(rename = "containerId", skip_serializing)]
     container_id: String,
-    name: String
+    name: String,
 }
 
-async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwest::Result<Vec<ServiceAccountRole>> {
+async fn get_realm_permission_roles(
+    token: &str,
+    conf: &KeyCloakConfig,
+) -> reqwest::Result<Vec<ServiceAccountRole>> {
     #[derive(Debug, serde::Deserialize)]
     struct RealmId {
         id: String,
         #[serde(rename = "clientId")]
-        client_id: String
+        client_id: String,
     }
     let permission_realm = if conf.keycloak_realm == "master" {
         "master-realm"
     } else {
         "realm-management"
     };
-    let res = CLIENT.get(&format!(
+    let res = CLIENT
+        .get(&format!(
             "{}admin/realms/{}/clients/?q={permission_realm}&search",
             conf.keycloak_url, conf.keycloak_realm
         ))
@@ -194,10 +201,12 @@ async fn get_realm_permission_roles(token: &str, conf: &KeyCloakConfig) -> reqwe
         .await?
         .json::<Vec<RealmId>>()
         .await?;
-    let role_client = res.into_iter()
+    let role_client = res
+        .into_iter()
         .find(|v| v.client_id.starts_with(permission_realm))
         .expect(&format!("Failed to find realm id for {permission_realm}"));
-    CLIENT.get(&format!(
+    CLIENT
+        .get(&format!(
             "{}admin/realms/{}/clients/{}/roles",
             conf.keycloak_url, conf.keycloak_realm, role_client.id
         ))

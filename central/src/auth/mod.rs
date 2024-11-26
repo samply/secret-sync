@@ -1,3 +1,3 @@
-mod keycloak;
-pub(crate) mod config;
 pub mod authentik;
+pub(crate) mod config;
+mod keycloak;

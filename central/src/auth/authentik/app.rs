@@ -1,11 +1,14 @@
+use std::i64;
+
 use beam_lib::reqwest::{self, Response, StatusCode};
 use reqwest::Client;
 use serde_json::{json, Value};
 use shared::OIDCConfig;
+use tracing::{debug, info};
 
 use super::AuthentikConfig;
 
-pub fn generate_app_values(provider: &str, name: &str, oidc_client_config: &OIDCConfig) -> Value {
+pub fn generate_app_values(provider: i64, name: &str, oidc_client_config: &OIDCConfig) -> Value {
     let id = format!(
         "{name}-{}",
         if oidc_client_config.is_public {
@@ -14,7 +17,6 @@ pub fn generate_app_values(provider: &str, name: &str, oidc_client_config: &OIDC
             "private"
         }
     );
-    // Todo noch anpassen
     json!({
         "name": id,
         "slug": id,
@@ -24,17 +26,24 @@ pub fn generate_app_values(provider: &str, name: &str, oidc_client_config: &OIDC
 }
 
 pub async fn generate_application(
-    provider: &str,
+    provider: i64,
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     token: &str,
     client: &Client,
 ) -> reqwest::Result<Response> {
+    debug!(provider);
+    let app_value = generate_app_values(provider, name, oidc_client_config);
+    debug!("{:#?}", app_value);
     client
-        .post(&format!("{}/api/v3/core/applications/", conf.authentik_url))
+        .post(
+            conf.authentik_url
+                .join("api/v3/core/applications/")
+                .expect("Error parsing app url"),
+        )
         .bearer_auth(token)
-        .json(&generate_app_values(provider, name, oidc_client_config))
+        .json(&app_value)
         .send()
         .await
 }
@@ -42,43 +51,47 @@ pub async fn generate_application(
 pub async fn check_app_result(
     token: &str,
     name: &str,
+    provider_pk: i64,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     client: &Client,
 ) -> anyhow::Result<bool> {
-    let res = generate_application(name, name, oidc_client_config, conf, token, client).await?;
+    let res =
+        generate_application(provider_pk, name, oidc_client_config, conf, token, client).await?;
     match res.status() {
-        StatusCode::OK => {
-            println!("Application for {name} created.");
-            return Ok(true);
+        StatusCode::CREATED => {
+            info!("Application for {name} created.");
+            Ok(true)
         }
         StatusCode::CONFLICT => {
             let conflicting_client =
                 get_application(name, token, oidc_client_config, conf, client).await?;
             if app_configs_match(
                 &conflicting_client,
-                &generate_app_values(name, name, oidc_client_config),
+                &generate_app_values(provider_pk, name, oidc_client_config),
             ) {
+                info!("Application {name} exists.");
                 Ok(true)
             } else {
+                info!("Application for {name} is updated.");
                 Ok(client
-                    .put(&format!(
-                        "{}/api/v3/core/applicaions/{}",
-                        conf.authentik_url,
-                        conflicting_client
-                            .get("slug")
-                            .and_then(Value::as_str)
-                            .expect("We have a valid client")
-                    ))
+                    .put(
+                        conf.authentik_url.join("api/v3/core/applicaions/")?.join(
+                            conflicting_client
+                                .get("slug")
+                                .and_then(Value::as_str)
+                                .expect("No valid client"),
+                        )?,
+                    )
                     .bearer_auth(token)
-                    .json(&generate_app_values(name, name, oidc_client_config))
+                    .json(&generate_app_values(provider_pk, name, oidc_client_config))
                     .send()
                     .await?
                     .status()
                     .is_success())
             }
         }
-        s => anyhow::bail!("Unexpected statuscode {s} while creating keycloak client. {res:?}"),
+        s => anyhow::bail!("Unexpected statuscode {s} while creating authentik client. {res:?}"),
     }
 }
 
@@ -98,10 +111,11 @@ pub async fn get_application(
         }
     );
     client
-        .get(&format!(
-            "{}/api/v3/core/applications/{id}/",
+        .get(
             conf.authentik_url
-        ))
+                .join(&format!("api/v3/core/applications/{id}/"))
+                .expect("Error parsing app url"),
+        )
         .bearer_auth(token)
         .send()
         .await?
@@ -117,9 +131,10 @@ pub async fn compare_applications(
     client: &Client,
 ) -> anyhow::Result<bool> {
     let client = get_application(name, token, oidc_client_config, conf, client).await?;
-    let wanted_client = generate_app_values(name, name, oidc_client_config);
+    let test = 27;
+    let wanted_client = generate_app_values(test, name, oidc_client_config);
     Ok(
-        client.get("client_secret") == wanted_client.get("client_ secret")
+        client.get("client_secret") == wanted_client.get("client_secret")
             && app_configs_match(&client, &wanted_client),
     )
 }

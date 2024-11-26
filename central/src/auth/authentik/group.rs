@@ -1,6 +1,7 @@
-use beam_lib::reqwest::{self, StatusCode, Url};
+use beam_lib::reqwest::{self, StatusCode};
 use reqwest::Client;
 use serde_json::json;
+use tracing::info;
 
 use super::AuthentikConfig;
 
@@ -8,7 +9,7 @@ pub async fn create_groups(
     name: &str,
     token: &str,
     conf: &AuthentikConfig,
-    CLIENT: &Client,
+    client: &Client,
 ) -> anyhow::Result<()> {
     let capitalize = |s: &str| {
         let mut chrs = s.chars();
@@ -20,14 +21,17 @@ pub async fn create_groups(
     };
     let name = capitalize(name);
     for group in &conf.authentik_groups_per_bh {
-        post_group(&group.replace('#', &name), token, conf).await?;
+        post_group(&group.replace('#', &name), token, conf, client).await?;
     }
     Ok(())
 }
 
-pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-
+pub async fn post_group(
+    name: &str,
+    token: &str,
+    conf: &AuthentikConfig,
+    client: &Client,
+) -> anyhow::Result<()> {
     let res = client
         .post(conf.authentik_url.join("api/v3/core/groups/")?)
         .bearer_auth(token)
@@ -37,10 +41,13 @@ pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyh
         .send()
         .await?;
     match res.status() {
-        StatusCode::CREATED => println!("Created group {name}"),
-        StatusCode::OK => println!("Created group {name}"),
-        StatusCode::BAD_REQUEST => println!("Group {name} already existed"),
-        s => anyhow::bail!("Unexpected statuscode {s} while creating group {name}: {:#?}", res.json::<serde_json::Value>().await.unwrap_or_default()),
+        StatusCode::CREATED => info!("Created group {name}"),
+        StatusCode::OK => info!("Created group {name}"),
+        StatusCode::BAD_REQUEST => info!("Group {name} already existed"),
+        s => anyhow::bail!(
+            "Unexpected statuscode {s} while creating group {name}: {:#?}",
+            res.json::<serde_json::Value>().await.unwrap_or_default()
+        ),
     }
     Ok(())
 }

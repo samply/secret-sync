@@ -1,0 +1,3 @@
+[env]
+AUTHENTIK_TOKEN = "JVMsRhNLQvfyQKXzxwrjdbqY6I5oxm2Db8PbDQ0iUXZS3WhIzKKqPU5Yv2xn"
+RUST_LOG = "debug"

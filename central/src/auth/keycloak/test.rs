@@ -1,14 +1,14 @@
-use crate::auth::keycloak::client::{client_configs_match, compare_clients, generate_client, get_client, post_client};
-use crate::{auth::keycloak::create_groups, CLIENT};
+use crate::auth::keycloak::client::{
+    client_configs_match, compare_clients, generate_client, get_client, post_client,
+};
 use crate::auth::keycloak::KeyCloakConfig;
+use crate::{auth::keycloak::create_groups, CLIENT};
 use beam_lib::reqwest::{self, StatusCode, Url};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
-
 #[cfg(test)]
 async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
-
     #[derive(serde::Deserialize)]
     struct Token {
         access_token: String,
@@ -16,7 +16,11 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
     CLIENT
         .post(&format!(
             "{}/realms/master/protocol/openid-connect/token",
-            if cfg!(test) { "http://localhost:1337"} else { "http://keycloak:8080" }
+            if cfg!(test) {
+                "http://localhost:1337"
+            } else {
+                "http://keycloak:8080"
+            }
         ))
         .form(&json!({
             "client_id": "admin-cli",
@@ -57,7 +61,6 @@ async fn setup_keycloak() -> reqwest::Result<(String, KeyCloakConfig)> {
     ))
 }
 
-
 #[ignore = "Requires setting up a keycloak"]
 #[tokio::test]
 async fn service_account_test() -> anyhow::Result<()> {
@@ -68,29 +71,52 @@ async fn service_account_test() -> anyhow::Result<()> {
     Ok(())
 }
 
-
 #[ignore = "Requires setting up a keycloak"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_keycloak().await?;
     let name = "test";
     // public client
-    let client_config = OIDCConfig { is_public: true, redirect_urls: vec!["http://foo/bar".into()] };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec!["http://foo/bar".into()],
+    };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
+        dbg!(post_client(&token, name, &client_config, &conf).await?)
+    else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
-    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
-    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+    let c = dbg!(get_client(name, &token, &client_config, &conf)
+        .await
+        .unwrap());
+    assert!(client_configs_match(
+        &c,
+        &generate_client(name, &client_config, &pw)
+    ));
+    assert!(dbg!(
+        compare_clients(&token, name, &client_config, &conf, &pw).await?
+    ));
 
     // private client
-    let client_config = OIDCConfig { is_public: false, redirect_urls: vec!["http://foo/bar".into()] };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) = dbg!(post_client(&token, name, &client_config, &conf).await?) else {
+    let client_config = OIDCConfig {
+        is_public: false,
+        redirect_urls: vec!["http://foo/bar".into()],
+    };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
+        dbg!(post_client(&token, name, &client_config, &conf).await?)
+    else {
         panic!("Not created or existed")
     };
-    let c = dbg!(get_client(name, &token, &client_config, &conf).await.unwrap());
-    assert!(client_configs_match(&c, &generate_client(name, &client_config, &pw)));
-    assert!(dbg!(compare_clients(&token, name, &client_config, &conf, &pw).await?));
+    let c = dbg!(get_client(name, &token, &client_config, &conf)
+        .await
+        .unwrap());
+    assert!(client_configs_match(
+        &c,
+        &generate_client(name, &client_config, &pw)
+    ));
+    assert!(dbg!(
+        compare_clients(&token, name, &client_config, &conf, &pw).await?
+    ));
 
     Ok(())
 }

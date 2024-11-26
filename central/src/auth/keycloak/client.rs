@@ -13,7 +13,14 @@ pub async fn get_client(
     oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> reqwest::Result<serde_json::Value> {
-    let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
+    let id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
     CLIENT
         .get(&format!(
             "{}admin/realms/{}/clients/{id}",
@@ -25,7 +32,6 @@ pub async fn get_client(
         .json()
         .await
 }
-
 
 pub async fn compare_clients(
     token: &str,
@@ -41,24 +47,34 @@ pub async fn compare_clients(
 }
 
 pub fn client_configs_match(a: &Value, b: &Value) -> bool {
-    let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| a
-        .get(key)
-        .and_then(Value::as_array)
-        .is_some_and(|a_values| b
-            .get(key)
+    let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| {
+        a.get(key)
             .and_then(Value::as_array)
-            .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
-        );
-    
+            .is_some_and(|a_values| {
+                b.get(key)
+                    .and_then(Value::as_array)
+                    .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
+            })
+    };
+
     a.get("name") == b.get("name")
         && includes_other_json_array("defaultClientScopes", &|a_v, v| a_v.contains(v))
         && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("protocolMappers", &|a_v, v| a_v.iter().any(|a_v| a_v.get("name") == v.get("name")))
+        && includes_other_json_array("protocolMappers", &|a_v, v| {
+            a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
+        })
 }
 
 pub fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str) -> Value {
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    let id = format!("{name}-{}", if oidc_client_config.is_public { "public" } else { "private" });
+    let id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
     let mut json = json!({
         "name": id,
         "id": id,
@@ -89,11 +105,12 @@ pub fn generate_client(name: &str, oidc_client_config: &OIDCConfig, secret: &str
         }]
     });
     if let Some(secret) = secret {
-        json.as_object_mut().unwrap().insert("secret".to_owned(), secret.into());
+        json.as_object_mut()
+            .unwrap()
+            .insert("secret".to_owned(), secret.into());
     }
     json
 }
-
 
 pub async fn post_client(
     token: &str,
@@ -133,12 +150,14 @@ pub async fn post_client(
         StatusCode::CONFLICT => {
             let conflicting_client = get_client(name, token, oidc_client_config, conf).await?;
             if client_configs_match(&conflicting_client, &generated_client) {
-                Ok(SecretResult::AlreadyExisted(conflicting_client
-                    .as_object()
-                    .and_then(|o| o.get("secret"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_owned()))
+                Ok(SecretResult::AlreadyExisted(
+                    conflicting_client
+                        .as_object()
+                        .and_then(|o| o.get("secret"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned(),
+                ))
             } else {
                 Ok(CLIENT
                     .put(&format!(

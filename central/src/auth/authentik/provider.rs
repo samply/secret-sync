@@ -1,9 +1,10 @@
-use anyhow::Ok;
-use reqwest::{Client, Response, StatusCode};
+use anyhow::{Context, Ok};
+use reqwest::{Client, Response, StatusCode, Url};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
+use tracing::debug;
 
-use crate::{auth::config::FlowPropertymapping, get_beamclient};
+use crate::auth::config::FlowPropertymapping;
 
 use super::{get_uuid, AuthentikConfig};
 
@@ -38,7 +39,7 @@ pub async fn generate_provider_values(
             mapping.property_mapping.get("microprofile-jwt"),
             mapping.property_mapping.get("groups")
         ],
-        "redirect_uris": oidc_client_config.redirect_urls,
+        "redirect_uris": oidc_client_config.redirect_urls.first().unwrap(),
     });
 
     if oidc_client_config.is_public {
@@ -64,7 +65,7 @@ pub async fn get_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     client: &Client,
-) -> reqwest::Result<serde_json::Value> {
+) -> anyhow::Result<Value> {
     let id = format!(
         "{name}-{}",
         if oidc_client_config.is_public {
@@ -73,20 +74,34 @@ pub async fn get_provider(
             "private"
         }
     );
-    let provider_url = "/api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
-    let pk = get_uuid(&provider_url, conf, token, &id, client)
+    //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
+    let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
+    let query_url = Url::parse_with_params(
+        base_url.as_str(),
+        &[("ordering", "name"), ("page", "1"), ("page_size", "20")],
+    )
+    .unwrap();
+
+    let pk = get_uuid(&query_url, token, &id, client)
         .await
-        .expect(&format!("Property: {:?}", id));
+        .context(format!("Property: {:?}", id))?;
+    let mut base_url = conf
+        .authentik_url
+        .join("api/v3/providers/oauth2/")
+        .context("Error parsing provider")?;
+    {
+        let mut provider_url = base_url.path_segments_mut().unwrap();
+        provider_url.push(&pk);
+    }
     client
-        .get(&format!(
-            "{}/api/v3/providers/oauth2/{pk}/",
-            conf.authentik_url
-        ))
+        .get(base_url)
         .bearer_auth(token)
         .send()
-        .await?
+        .await
+        .context("No Response")?
         .json()
         .await
+        .context("No valid json Response")
 }
 
 pub async fn compare_provider(
@@ -123,4 +138,3 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
         })
 }
-
