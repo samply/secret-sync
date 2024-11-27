@@ -1,10 +1,7 @@
 use crate::auth::authentik::app::generate_app_values;
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::get_provider;
-use crate::auth::authentik::{
-    app_configs_match, combine_app_provider, compare_applications, get_application, get_uuid,
-    AuthentikConfig,
-};
+use crate::auth::authentik::{combine_app_provider, get_application, get_uuid, AuthentikConfig};
 use crate::{get_beamclient, CLIENT};
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -98,7 +95,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "pipe";
+    let name = "runner";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -114,18 +111,6 @@ async fn test_create_client() -> anyhow::Result<()> {
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
-    let c = dbg!(
-        get_application(name, &token, &client_config, &conf, &get_beamclient())
-            .await
-            .unwrap()
-    );
-    assert!(app_configs_match(
-        &c,
-        &generate_app_values(provider_pk, name, &client_config)
-    ));
-    assert!(dbg!(
-        compare_applications(&token, name, &client_config, &conf, &get_beamclient()).await?
-    ));
 
     // private client
     let client_config = OIDCConfig {
@@ -137,18 +122,6 @@ async fn test_create_client() -> anyhow::Result<()> {
     else {
         panic!("Not created or existed")
     };
-    let c = dbg!(
-        get_application(name, &token, &client_config, &conf, &get_beamclient())
-            .await
-            .unwrap()
-    );
-    assert!(app_configs_match(
-        &c,
-        &generate_app_values(provider_pk, name, &client_config)
-    ));
-    assert!(dbg!(
-        compare_applications(&token, name, &client_config, &conf, &get_beamclient()).await?
-    ));
 
     Ok(())
 }

@@ -84,14 +84,18 @@ impl OIDCProvider {
                         "Failed to validate client. See upstrean logs.".into()
                     })
             }
-            OIDCProvider::Authentik(conf) => {
-                authentik::validate_application(name, oidc_client_config, conf, &get_beamclient())
-                    .await
-                    .map_err(|e| {
-                        eprintln!("Failed to validate client {name}: {e}");
-                        "Failed to validate client. See upstrean logs.".into()
-                    })
-            }
+            OIDCProvider::Authentik(conf) => authentik::validate_application(
+                name,
+                oidc_client_config,
+                secret,
+                conf,
+                &get_beamclient(),
+            )
+            .await
+            .map_err(|e| {
+                eprintln!("Failed to validate client {name}: {e}");
+                "Failed to validate client. See upstrean logs.".into()
+            }),
         }
     }
 }

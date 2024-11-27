@@ -62,15 +62,33 @@ pub async fn generate_provider_values(
     Ok(json)
 }
 
-async fn get_provider_id(
-    target_url: &Url,
+pub async fn get_provider_id(
+    name: &str,
     token: &str,
-    search_key: &str,
+    oidc_client_config: &OIDCConfig,
+    conf: &AuthentikConfig,
     client: &Client,
 ) -> Option<i64> {
+    let id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
+
+    //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
+    let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
+    let query_url = Url::parse_with_params(
+        base_url.as_str(),
+        &[("ordering", "name"), ("page", "1"), ("page_size", "20")],
+    )
+    .unwrap();
+
     let target_value: serde_json::Value = client
-        .get(target_url.to_owned())
-        .query(&[("search", search_key)])
+        .get(query_url.to_owned())
+        .query(&[("search", &id)])
         .bearer_auth(token)
         .send()
         .await
@@ -78,7 +96,7 @@ async fn get_provider_id(
         .json()
         .await
         .ok()?;
-    debug!("Value search key {search_key}: {:?}", &target_value);
+    debug!("Value search key {id}: {:?}", &target_value);
     // pk is the uuid for this result
     target_value
         .as_object()
@@ -97,23 +115,7 @@ pub async fn get_provider(
     conf: &AuthentikConfig,
     client: &Client,
 ) -> anyhow::Result<Value> {
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
-    //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
-    let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
-    let query_url = Url::parse_with_params(
-        base_url.as_str(),
-        &[("ordering", "name"), ("page", "1"), ("page_size", "20")],
-    )
-    .unwrap();
-
-    let res = get_provider_id(&query_url, token, &id, client).await;
+    let res = get_provider_id(name, token, oidc_client_config, conf, client).await;
     debug!(res);
     let pk = res.unwrap();
     let mut base_url = conf
@@ -151,10 +153,7 @@ pub async fn compare_provider(
         generate_provider_values(name, oidc_client_config, secret, conf, token).await?;
     debug!("{:#?}", client);
     debug!("{:#?}", wanted_client);
-    Ok(
-        client.get("client_secret") == wanted_client.get("client_secret")
-            && provider_configs_match(&client, &wanted_client),
-    )
+    Ok(provider_configs_match(&client, &wanted_client))
 }
 
 pub fn provider_configs_match(a: &Value, b: &Value) -> bool {

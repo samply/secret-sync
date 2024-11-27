@@ -7,14 +7,14 @@ use std::{collections::HashMap, sync::Mutex};
 
 use crate::get_beamclient;
 use anyhow::bail;
-use app::{
-    app_configs_match, check_app_result, compare_applications, generate_app_values,
-    generate_application, get_application,
-};
+use app::{app_configs_match, check_app_result, compare_app_provider, get_application};
 use beam_lib::reqwest::{self, Url};
 use clap::{builder::Str, Parser};
 use group::create_groups;
-use provider::{compare_provider, generate_provider_values, get_provider, provider_configs_match};
+use provider::{
+    compare_provider, generate_provider_values, get_provider, get_provider_id,
+    provider_configs_match,
+};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -93,11 +93,12 @@ impl FlowPropertymapping {
 pub async fn validate_application(
     name: &str,
     oidc_client_config: &OIDCConfig,
+    secret: &str,
     conf: &AuthentikConfig,
     client: &Client,
 ) -> anyhow::Result<bool> {
     let token = get_access_token(conf).await?;
-    compare_applications(&token, name, oidc_client_config, conf, client).await
+    compare_app_provider(&token, name, oidc_client_config, secret, conf, client).await
 }
 
 pub async fn create_app_provider(
@@ -135,37 +136,66 @@ pub async fn combine_app_provider(
     dbg!(&provider_res);
     match provider_res.status() {
         StatusCode::CREATED => {
-            let pk: serde_json::Value = provider_res.json().await?;
-            let provider_pk = pk.get("pk").and_then(|v| v.as_i64()).unwrap();
+            let res_provider: serde_json::Value = provider_res.json().await?;
+            let provider_pk = res_provider.get("pk").and_then(|v| v.as_i64()).unwrap();
+            let provider_name = res_provider.get("name").and_then(|v| v.as_str()).unwrap();
             debug!("{:?}", provider_pk);
-            info!("Provider for {name} created.");
-            check_app_result(token, name, provider_pk, oidc_client_config, conf, client).await?;
-            Ok(SecretResult::Created(secret))
+            info!("Provider for {provider_name} created.");
+            if check_app_result(token, name, provider_pk, oidc_client_config, conf, client).await? {
+                Ok(SecretResult::Created(secret))
+            } else {
+                bail!(
+                    "Unexpected Conflict {name} while overwriting authentik app. {:?}",
+                    get_application(name, token, oidc_client_config, conf, client).await?
+                );
+            }
         }
         StatusCode::BAD_REQUEST => {
             let conflicting_provider =
                 get_provider(name, token, oidc_client_config, conf, client).await?;
             debug!("{:#?}", conflicting_provider);
+
+            let app = conflicting_provider
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap();
             if compare_provider(token, name, oidc_client_config, conf, &secret, client).await? {
-                info!("Provider {name} existed.");
-                Ok(SecretResult::AlreadyExisted(
+                info!("Provider {app} existed.");
+                if check_app_result(
+                    token,
+                    name,
                     conflicting_provider
-                        .as_object()
-                        .and_then(|o| o.get("client_secret"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned(),
-                ))
+                        .get("pk")
+                        .and_then(|v| v.as_i64())
+                        .unwrap(),
+                    oidc_client_config,
+                    conf,
+                    client,
+                )
+                .await?
+                {
+                    Ok(SecretResult::AlreadyExisted(
+                        conflicting_provider
+                            .as_object()
+                            .and_then(|o| o.get("client_secret"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_owned(),
+                    ))
+                } else {
+                    bail!(
+                        "Unexpected Conflict {name} while overwriting authentik app. {:?}",
+                        get_application(name, token, oidc_client_config, conf, client).await?
+                    );
+                }
             } else {
-                Ok(client
-                    .put(
-                        conf.authentik_url.join("api/v3/providers/oauth2/")?.join(
-                            conflicting_provider
-                                .get("pk")
-                                .and_then(Value::as_str)
-                                .expect("We have a valid client"),
-                        )?,
-                    )
+                let res = client
+                    .patch(conf.authentik_url.join(&format!(
+                            "api/v3/providers/oauth2/{}/",
+                            get_provider_id(name, token, oidc_client_config, conf, client)
+                                .await
+                                .unwrap()
+                        ))?)
                     .bearer_auth(token)
                     .json(&generated_provider)
                     .send()
@@ -173,7 +203,28 @@ pub async fn combine_app_provider(
                     .status()
                     .is_success()
                     .then_some(SecretResult::AlreadyExisted(secret))
-                    .expect("We know the provider already exists so updating should be successful"))
+                    .expect("We know the provider already exists so updating should be successful");
+                info!("Provider {app} updated");
+                if check_app_result(
+                    token,
+                    name,
+                    conflicting_provider
+                        .get("pk")
+                        .and_then(|v| v.as_i64())
+                        .unwrap(),
+                    oidc_client_config,
+                    conf,
+                    client,
+                )
+                .await?
+                {
+                    Ok(res)
+                } else {
+                    bail!(
+                        "Unexpected Conflict {name} while overwriting authentik app. {:?}",
+                        get_application(name, token, oidc_client_config, conf, client).await?
+                    );
+                }
             }
         }
         s => bail!(

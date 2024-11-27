@@ -7,7 +7,13 @@ use serde_json::{json, Value};
 use shared::OIDCConfig;
 use tracing::{debug, info};
 
-use super::{get_uuid, provider::get_provider, AuthentikConfig};
+use crate::auth::config::FlowPropertymapping;
+
+use super::{
+    get_uuid,
+    provider::{get_provider, get_provider_id},
+    AuthentikConfig,
+};
 
 pub fn generate_app_values(provider: i64, name: &str, oidc_client_config: &OIDCConfig) -> Value {
     let id = format!(
@@ -124,24 +130,66 @@ pub async fn get_application(
         .await
 }
 
-pub async fn compare_applications(
+// used only from validate in config
+pub async fn compare_app_provider(
     token: &str,
     name: &str,
     oidc_client_config: &OIDCConfig,
+    secret: &str,
     conf: &AuthentikConfig,
     client: &Client,
 ) -> anyhow::Result<bool> {
-    let provider_pk = get_provider(name, token, oidc_client_config, conf, client)
-        .await?
-        .get("pk")
-        .and_then(|v| v.as_i64())
-        .unwrap();
-    let client = get_application(name, token, oidc_client_config, conf, client).await?;
-    let wanted_client = generate_app_values(provider_pk, name, oidc_client_config);
-    Ok(
-        client.get("client_secret") == wanted_client.get("client_secret")
-            && app_configs_match(&client, &wanted_client),
-    )
+    let provider_pk = get_provider_id(name, token, oidc_client_config, conf, client).await;
+    match provider_pk {
+        Some(res) => {
+            let app_res = get_application(name, token, oidc_client_config, conf, client).await?;
+            let wanted_client =
+                generate_all_validation(name, token, conf, oidc_client_config).await?;
+            Ok(app_res.get("client_secret").unwrap() == secret
+                && app_configs_match(&app_res, &wanted_client))
+        }
+        None => Ok(false),
+    }
+}
+
+pub async fn generate_all_validation(
+    name: &str,
+    token: &str,
+    conf: &AuthentikConfig,
+    oidc_client_config: &OIDCConfig,
+) -> anyhow::Result<Value> {
+    let mapping = FlowPropertymapping::new(conf, token).await?;
+    let id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
+    let app_json = json!({
+    "name": id,
+    "slug": id,
+    "provider_obj": {
+      "name": id,
+        "authorization_flow": mapping.authorization_flow,
+        "property_mappings": [
+            mapping.property_mapping.get("web-origins"),
+            mapping.property_mapping.get("acr"),
+            mapping.property_mapping.get("profile"),
+            mapping.property_mapping.get("roles"),
+            mapping.property_mapping.get("email"),
+            mapping.property_mapping.get("microprofile-jwt"),
+            mapping.property_mapping.get("groups")
+        ],
+      "assigned_application_slug": id,
+      "assigned_application_name": id,
+    },
+    "launch_url": oidc_client_config.redirect_urls.first().unwrap(),
+    "group": name
+      });
+
+    Ok(app_json)
 }
 
 pub fn app_configs_match(a: &Value, b: &Value) -> bool {
