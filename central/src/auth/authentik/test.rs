@@ -95,7 +95,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "runner";
+    let name = "tourtle";
     // public client
     let client_config = OIDCConfig {
         is_public: true,

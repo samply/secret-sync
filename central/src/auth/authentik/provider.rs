@@ -2,13 +2,20 @@ use std::i64;
 
 use anyhow::{Context, Ok};
 use reqwest::{Client, Response, StatusCode, Url};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
-use tracing::{debug, field::debug};
+use tracing::debug;
 
 use crate::auth::config::FlowPropertymapping;
 
 use super::{get_uuid, AuthentikConfig};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RedirectURIS {
+    matching_mode: String,
+    url: String,
+}
 
 pub async fn generate_provider_values(
     name: &str,
@@ -33,6 +40,7 @@ pub async fn generate_provider_values(
         "name": id,
         "client_id": id,
         "authorization_flow": mapping.authorization_flow,
+        "invalidation_flow": mapping.invalidation_flow,
         "property_mappings": [
             mapping.property_mapping.get("web-origins"),
             mapping.property_mapping.get("acr"),
@@ -41,9 +49,22 @@ pub async fn generate_provider_values(
             mapping.property_mapping.get("email"),
             mapping.property_mapping.get("microprofile-jwt"),
             mapping.property_mapping.get("groups")
-        ],
-        "redirect_uris": oidc_client_config.redirect_urls.first().unwrap(),
+        ]
     });
+
+    if !oidc_client_config.redirect_urls.is_empty() {
+        let mut res_urls: Vec<RedirectURIS> = vec![];
+        for url in &oidc_client_config.redirect_urls {
+            res_urls.push(RedirectURIS {
+                matching_mode: "strict".to_owned(),
+                url: url.to_owned(),
+            });
+        }
+
+        json.as_object_mut()
+            .unwrap()
+            .insert("redirect_uris".to_owned(), json!(res_urls));
+    }
 
     if oidc_client_config.is_public {
         json.as_object_mut()
@@ -116,7 +137,7 @@ pub async fn get_provider(
     client: &Client,
 ) -> anyhow::Result<Value> {
     let res = get_provider_id(name, token, oidc_client_config, conf, client).await;
-    debug!(res);
+    debug!("id {:?}", res);
     let pk = res.unwrap();
     let mut base_url = conf
         .authentik_url
@@ -129,9 +150,10 @@ pub async fn get_provider(
         }
     */
 
-    client
-        .get(base_url)
-        .bearer_auth(token)
+    let cli = client.get(base_url);
+    debug!("cli {:?}", cli);
+
+    cli.bearer_auth(token)
         .send()
         .await
         .context("No Response")?

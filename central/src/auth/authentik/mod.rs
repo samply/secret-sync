@@ -43,7 +43,8 @@ impl FlowPropertymapping {
         if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
             return Ok(flow.clone());
         }
-        let flow_key = "authorization_flow";
+        let flow_auth = "authorization_flow";
+        let flow_invalidation = "default-provider-invalidation-flow";
         let property_keys = vec![
             "web-origins",
             "acr",
@@ -78,11 +79,16 @@ impl FlowPropertymapping {
         .unwrap();
 
         let property_mapping = get_property_mappings_uuids(&query_url, token, property_keys).await;
-        let authorization_flow = get_uuid(&flow_url, token, flow_key, &get_beamclient())
+        let authorization_flow = get_uuid(&flow_url, token, flow_auth, &get_beamclient())
             .await
             .expect("No default flow present"); // flow uuid
+        let invalidation_flow = get_uuid(&flow_url, token, flow_invalidation, &get_beamclient())
+            .await
+            .expect("No default flow present"); // flow uuid
+
         let mapping = FlowPropertymapping {
             authorization_flow,
+            invalidation_flow,
             property_mapping,
         };
         *PROPERTY_MAPPING_CACHE.lock().unwrap() = Some(mapping.clone());
