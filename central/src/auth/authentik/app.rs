@@ -11,7 +11,7 @@ use crate::auth::config::FlowPropertymapping;
 
 use super::{
     get_uuid,
-    provider::{get_provider, get_provider_id},
+    provider::{compare_provider, get_provider, get_provider_id, RedirectURIS},
     AuthentikConfig,
 };
 
@@ -70,7 +70,7 @@ pub async fn check_app_result(
             info!("Application for {name} created.");
             Ok(true)
         }
-        StatusCode::CONFLICT => {
+        StatusCode::BAD_REQUEST => {
             let conflicting_client =
                 get_application(name, token, oidc_client_config, conf, client).await?;
             if app_configs_match(
@@ -141,71 +141,24 @@ pub async fn compare_app_provider(
 ) -> anyhow::Result<bool> {
     let provider_pk = get_provider_id(name, token, oidc_client_config, conf, client).await;
     match provider_pk {
-        Some(res) => {
+        Some(pr_id) => {
             let app_res = get_application(name, token, oidc_client_config, conf, client).await?;
-            let wanted_client =
-                generate_all_validation(name, token, conf, oidc_client_config).await?;
-            Ok(app_res.get("client_secret").unwrap() == secret
-                && app_configs_match(&app_res, &wanted_client))
+            if app_configs_match(
+                &app_res,
+                &generate_app_values(pr_id, name, oidc_client_config),
+            ) {
+                return compare_provider(token, name, oidc_client_config, conf, secret, client)
+                    .await;
+            } else {
+                return Ok(false);
+            }
         }
         None => Ok(false),
     }
 }
 
-pub async fn generate_all_validation(
-    name: &str,
-    token: &str,
-    conf: &AuthentikConfig,
-    oidc_client_config: &OIDCConfig,
-) -> anyhow::Result<Value> {
-    let mapping = FlowPropertymapping::new(conf, token).await?;
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
-    let app_json = json!({
-    "name": id,
-    "slug": id,
-    "provider_obj": {
-      "name": id,
-        "authorization_flow": mapping.authorization_flow,
-        "property_mappings": [
-            mapping.property_mapping.get("web-origins"),
-            mapping.property_mapping.get("acr"),
-            mapping.property_mapping.get("profile"),
-            mapping.property_mapping.get("roles"),
-            mapping.property_mapping.get("email"),
-            mapping.property_mapping.get("microprofile-jwt"),
-            mapping.property_mapping.get("groups")
-        ],
-      "assigned_application_slug": id,
-      "assigned_application_name": id,
-    },
-    "launch_url": oidc_client_config.redirect_urls.first().unwrap(),
-    "group": name
-      });
-
-    Ok(app_json)
-}
-
 pub fn app_configs_match(a: &Value, b: &Value) -> bool {
-    let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| {
-        a.get(key)
-            .and_then(Value::as_array)
-            .is_some_and(|a_values| {
-                b.get(key)
-                    .and_then(Value::as_array)
-                    .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
-            })
-    };
     a.get("name") == b.get("name")
-        && includes_other_json_array("authorization_flow", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("redirectUris", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("property_mappings", &|a_v, v| {
-            a_v.iter().any(|a_v| a_v.get("name") == v.get("name"))
-        })
+        && a.get("group") == b.get("group")
+        && a.get("provider") == b.get("provider")
 }

@@ -1,7 +1,9 @@
 use crate::auth::authentik::app::generate_app_values;
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::get_provider;
-use crate::auth::authentik::{combine_app_provider, get_application, get_uuid, AuthentikConfig};
+use crate::auth::authentik::{
+    combine_app_provider, get_application, get_uuid, validate_application, AuthentikConfig,
+};
 use crate::{get_beamclient, CLIENT};
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -95,11 +97,15 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "tourtle";
+    let name = "dark";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
-        redirect_urls: vec!["http://foo/bar".into()],
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+        ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
         dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
@@ -133,7 +139,7 @@ async fn group_test() -> anyhow::Result<()> {
     create_groups("next2", &token, &conf, &get_beamclient()).await
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_flow() {
     let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
@@ -158,7 +164,7 @@ async fn test_flow() {
     }
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_property() {
     let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
@@ -184,7 +190,7 @@ async fn test_property() {
     debug!("{:?}", res);
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn create_property() {
     let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
@@ -203,4 +209,22 @@ async fn create_property() {
         .await
         .expect("no response");
     tracing::debug!("Result: {:#?}", res);
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_validate_client() -> anyhow::Result<()> {
+    let (token, conf) = setup_authentik()?;
+    let name = "dark";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+        ],
+    };
+    validate_application(name, &client_config, "", &conf, &get_beamclient());
+    Ok(())
 }

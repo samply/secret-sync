@@ -1,20 +1,18 @@
-use std::i64;
-
 use anyhow::{Context, Ok};
-use reqwest::{Client, Response, StatusCode, Url};
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use shared::{OIDCConfig, SecretResult};
+use shared::OIDCConfig;
 use tracing::debug;
 
 use crate::auth::config::FlowPropertymapping;
 
-use super::{get_uuid, AuthentikConfig};
+use super::AuthentikConfig;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct RedirectURIS {
-    matching_mode: String,
-    url: String,
+pub struct RedirectURIS {
+    pub matching_mode: String,
+    pub url: String,
 }
 
 pub async fn generate_provider_values(
@@ -137,18 +135,11 @@ pub async fn get_provider(
     client: &Client,
 ) -> anyhow::Result<Value> {
     let res = get_provider_id(name, token, oidc_client_config, conf, client).await;
-    debug!("id {:?}", res);
-    let pk = res.unwrap();
-    let mut base_url = conf
+    let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
+    let base_url = conf
         .authentik_url
         .join(&format!("api/v3/providers/oauth2/{pk}/"))
         .context("Error parsing provider")?;
-    /*
-        {
-            let mut provider_url = base_url.path_segments_mut().unwrap();
-            provider_url.push(&pk);
-        }
-    */
 
     let cli = client.get(base_url);
     debug!("cli {:?}", cli);
@@ -188,8 +179,23 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
                     .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
             })
     };
+
+    let redirct_url_match = || {
+        let a_uris = a.get("redirect_uris").and_then(Value::as_array);
+        let b_uris = b.get("redirect_uris").and_then(Value::as_array);
+        match (a_uris, b_uris) {
+            (Some(a_uris), Some(b_uris)) => {
+                a_uris.iter().all(|auri| b_uris.contains(auri))
+                    && b_uris.iter().all(|buri| a_uris.contains(buri))
+            }
+            (None, None) => true,
+            _ => false,
+        }
+    };
     a.get("name") == b.get("name")
+        && a.get("client_secret") == b.get("client_secret")
         && a.get("authorization_flow") == b.get("authorization_flow")
+        && a.get("invalidation_flow") == b.get("invalidation_flow")
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
-        && a.get("redirect_uris") == b.get("redirect_uris")
+        && redirct_url_match()
 }
