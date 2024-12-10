@@ -1,6 +1,6 @@
-use crate::auth::authentik::app::generate_app_values;
+use crate::auth::authentik::app::{check_app_result, compare_app_provider, generate_app_values};
 use crate::auth::authentik::group::{create_groups, post_group};
-use crate::auth::authentik::provider::get_provider;
+use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
 use crate::auth::authentik::{
     combine_app_provider, get_application, get_uuid, validate_application, AuthentikConfig,
 };
@@ -97,7 +97,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "dark";
+    let name = "walker";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -215,7 +215,7 @@ async fn create_property() {
 #[tokio::test]
 async fn test_validate_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "dark";
+    let name = "air";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -225,6 +225,51 @@ async fn test_validate_client() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
         ],
     };
-    validate_application(name, &client_config, "", &conf, &get_beamclient());
+    let res =
+        compare_app_provider(&token, name, &client_config, "", &conf, &get_beamclient()).await?;
+    debug!("Validate: {res}");
+    Ok(())
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_patch_provider() -> anyhow::Result<()> {
+    let (token, conf) = setup_authentik()?;
+    let name = "dark";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: false,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+        ],
+    };
+    let pk_id = get_provider_id(name, &token, &client_config, &conf, &get_beamclient())
+        .await
+        .unwrap();
+    let generated_provider =
+        generate_provider_values(name, &client_config, "", &conf, &token).await?;
+    debug!("{:#?}", generated_provider);
+
+    let res = get_beamclient()
+        .patch(
+            conf.authentik_url
+                .join(&format!("api/v3/providers/oauth2/{}/", pk_id))?,
+        )
+        .bearer_auth(&token)
+        .json(&generated_provider)
+        .send()
+        .await?
+        .status()
+        .is_success()
+        .then_some(SecretResult::AlreadyExisted("test".to_owned()))
+        .expect("We know the provider already exists so updating should be successful");
+    debug!("Updated:  {:#?}", res);
+    debug!("Provider {name} updated");
+    debug!(
+        "App now: {:#?}",
+        get_application(name, &token, &client_config, &conf, &get_beamclient()).await?
+    );
     Ok(())
 }
