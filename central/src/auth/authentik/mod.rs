@@ -130,7 +130,7 @@ pub async fn combine_app_provider(
     };
     let generated_provider =
         generate_provider_values(name, oidc_client_config, &secret, conf, token).await?;
-    debug!("{:#?}", generated_provider);
+    debug!("Provider Values: {:#?}", generated_provider);
     let provider_res = client
         .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
         .bearer_auth(token)
@@ -139,7 +139,7 @@ pub async fn combine_app_provider(
         .await?;
     // Create groups for this client
     create_groups(name, token, conf, client).await?;
-    dbg!(&provider_res);
+    debug!("Result Provider: {:#?}", provider_res);
     match provider_res.status() {
         StatusCode::CREATED => {
             let res_provider: serde_json::Value = provider_res.json().await?;
