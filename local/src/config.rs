@@ -1,8 +1,8 @@
-use std::{path::PathBuf, convert::Infallible, str::FromStr};
+use std::{convert::Infallible, path::PathBuf, str::FromStr};
 
 use beam_lib::AppId;
 use clap::Parser;
-use shared::{SecretRequest, OIDCConfig};
+use shared::{OIDCConfig, SecretRequest};
 
 /// Local secret sync
 #[derive(Debug, Parser)]
@@ -31,14 +31,18 @@ impl FromStr for SecretDefinitions {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.split('\x1E').filter(|s| !s.is_empty()).map(SecretArg::from_str).collect::<Result<_, _>>().map(Self)
+        s.split('\x1E')
+            .filter(|s| !s.is_empty())
+            .map(SecretArg::from_str)
+            .collect::<Result<_, _>>()
+            .map(Self)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SecretArg {
     pub name: String,
-    pub request: SecretRequest
+    pub request: SecretRequest,
 }
 
 impl FromStr for SecretArg {
@@ -59,11 +63,17 @@ impl FromStr for SecretArg {
                     _ => return Err(format!("Invalid OIDC parameters '{args}'. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
                 };
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
-                Ok(SecretRequest::OpenIdConnect(OIDCConfig{ redirect_urls, is_public }))
-            },
-            _ => Err(format!("Unknown secret type {secret_type}"))
+                Ok(SecretRequest::OpenIdConnect(OIDCConfig {
+                    redirect_urls,
+                    is_public,
+                }))
+            }
+            _ => Err(format!("Unknown secret type {secret_type}")),
         }?;
 
-        Ok(SecretArg { name: name.to_string(), request })
+        Ok(SecretArg {
+            name: name.to_string(),
+            request,
+        })
     }
 }
