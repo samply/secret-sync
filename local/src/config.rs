@@ -7,7 +7,7 @@ use shared::{SecretRequest, OIDCConfig};
 /// Local secret sync
 #[derive(Debug, Parser)]
 pub struct Config {
-    /// Will be used to create this apps beam app id and is already required by the beam proxy
+    /// Will be used to create this apps beam id by prepending the prefix "secret-sync."
     #[clap(long, env, hide(true))]
     pub proxy_id: String,
 
@@ -19,7 +19,7 @@ pub struct Config {
     #[clap(long, env, default_value = "/usr/local/cache")]
     pub cache_path: PathBuf,
 
-    /// The app id of this application
+    /// The beam id of the secret sync central component
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub oidc_provider: Option<AppId>,
 }
