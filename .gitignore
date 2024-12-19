@@ -1,4 +1,6 @@
 /target
 Cargo.lock
 /dev-keycloak/cache
+/dev-keycloak/.env
 /dev-gitlab/cache
+/dev-gitlab/.env
