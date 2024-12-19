@@ -63,7 +63,7 @@ services:
       - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users,query-groups
 
       # Optional GitLab parameters
-      # The base URL for API calls including the trailing slash, e.g. "https://gitlab.com/"
+      # The base URL for API calls, e.g. "https://gitlab.com/"
       - GITLAB_URL=https://gitlab.com/
       # A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
       - GITLAB_API_ACCESS_TOKEN=

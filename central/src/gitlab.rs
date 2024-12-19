@@ -6,7 +6,7 @@ use shared::{GitLabProjectAccessTokenConfig, SecretResult};
 
 #[derive(Parser)]
 struct GitLabApiConfig {
-    /// The base URL for API calls including the trailing slash, e.g. "https://gitlab.com/"
+    /// The base URL for API calls, e.g. "https://gitlab.com/"
     #[clap(long, env)]
     pub gitlab_url: Url,
     /// A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
@@ -51,11 +51,15 @@ impl GitLabProjectAccessTokenProvider {
 
         let response = self
             .client
-            .post(format!(
-                "{}api/v4/projects/{}/access_tokens",
-                self.config.gitlab_url,
-                urlencoding::encode(&client_config.project_path)
-            ))
+            .post(
+                self.config
+                    .gitlab_url
+                    .join(&format!(
+                        "api/v4/projects/{}/access_tokens",
+                        urlencoding::encode(&client_config.project_path)
+                    ))
+                    .map_err(|e| e.to_string())?,
+            )
             .header("PRIVATE-TOKEN", &self.config.gitlab_api_access_token)
             .json(&json!({
                 "name": format!("secret-sync-{name}"),
@@ -91,10 +95,15 @@ impl GitLabProjectAccessTokenProvider {
     ) -> Result<bool, String> {
         let response = self
             .client
-            .get(format!(
-                "{}{}.git/info/refs?service=git-upload-pack",
-                self.config.gitlab_url, &client_config.project_path
-            ))
+            .get(
+                self.config
+                    .gitlab_url
+                    .join(&format!(
+                        "{}.git/info/refs?service=git-upload-pack",
+                        client_config.project_path
+                    ))
+                    .map_err(|e| e.to_string())?,
+            )
             .basic_auth("any-non-blank-username", Some(secret))
             .send()
             .await
