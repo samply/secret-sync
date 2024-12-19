@@ -18,8 +18,10 @@ services:
     environment:
       # See below for the format specification
       - SECRET_DEFINITIONS=${ARGS}
-      # The beam app id of the central half of this component
+      # The beam id of the secret sync central component that answers OIDC requests (optional)
       - OIDC_PROVIDER=${OIDC_PROVIDER_APP_ID}
+      # The beam id of the secret sync central component that answers GitLab project access token requests (optional)
+      - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
       # Required args for the beam proxy for more options look at the beam Readme
       - PROXY_ID=proxy1.broker
       - BROKER_URL=${BROKER_URL}
@@ -59,6 +61,12 @@ services:
       - KEYCLOAK_SECRET=my_secret
       # Extra service account roles for the private client
       - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users,query-groups
+
+      # Optional GitLab parameters
+      # The base URL for API calls including the trailing slash, e.g. "https://gitlab.com/"
+      - GITLAB_URL=https://gitlab.com/
+      # A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
+      - GITLAB_API_ACCESS_TOKEN=
 ```
 
 ## Secret types
@@ -73,3 +81,13 @@ Each argument is separated by a semicolon. The arguments are:
 
 Example:
 `OIDC:MY_OIDC_CLIENT_SECRET:public;https://foo.com,https://bar.com`
+
+### GitLab Project Access Token
+
+Create a GitLab project access token for read access (git clone/pull) to a repository.
+
+Secret type: `GitLabProjectAccessToken`
+
+The argument is the path to the repository on GitLab, typically of the format "group/project".
+
+Example: `GitLabProjectAccessToken:foobar:bridgehead-configurations/foobar`

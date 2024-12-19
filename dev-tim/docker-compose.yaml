@@ -1,9 +1,5 @@
 version: "3"
 
-# Use the run.sh script when running this docker-compose.yaml. This docker-compose.yaml only works in conjunction with the dev/beamdev
-# script and corresponding docker-compose.yaml in the beam repository. That scripts sets up a beam network with one broker and two
-# proxies. Only the broker (broker) and the second proxy (proxy2.broker) are used here.
-
 services:
   # This container contains both a beam proxy (proxy1.broker) and the secret sync local component (secret-sync.proxy1.broker)
   local:
@@ -12,7 +8,7 @@ services:
       dockerfile: Dockerfile.local
     environment:
       - PROXY_ID=proxy1.broker
-      - OIDC_PROVIDER=app2.proxy2.broker
+      - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
       - BROKER_URL=http://broker:8080
       - SECRET_DEFINITIONS=${ARGS}
     volumes:
@@ -34,10 +30,8 @@ services:
       - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
       - BEAM_SECRET=App1Secret
-      - KEYCLOAK_URL=http://keycloak:8080
-      - KEYCLOAK_ID=admin
-      - KEYCLOAK_SECRET=admin
-      - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users
+      - GITLAB_URL=https://git.verbis.dkfz.de/
+      - GITLAB_API_ACCESS_TOKEN=YjTXxdzLMak-XXscyxy4
     extra_hosts:
       # Containers can access the host at 172.17.0.1
       - "proxy:172.17.0.1"

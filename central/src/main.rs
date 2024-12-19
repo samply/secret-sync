@@ -3,10 +3,12 @@ use std::{collections::HashSet, time::Duration};
 use beam_lib::{reqwest::Client, BeamClient, BlockingOptions, TaskRequest, TaskResult, AppId};
 use clap::Parser;
 use config::{Config, OIDCProvider};
+use gitlab::GitLabProjectAccessTokenProvider;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretResult, SecretRequestType};
 
 mod config;
+mod gitlab;
 mod keycloak;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
@@ -20,6 +22,8 @@ pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
 });
 
 pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
+pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitLabProjectAccessTokenProvider>> =
+    Lazy::new(GitLabProjectAccessTokenProvider::try_init);
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
@@ -90,6 +94,12 @@ pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretR
             };
             oidc_provider.create_client(name, oidc_client_config).await
         }
+        SecretRequest::GitLabProjectAccessToken(token_config) => {
+            let Some(gitlab_project_access_token_provider) = GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref() else {
+                return Err("No GitLab project access token provider configured!".into());
+            };
+            gitlab_project_access_token_provider.create_token(name, token_config).await
+        }
     }
 }
 
@@ -99,7 +109,17 @@ pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Resu
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
-            oidc_provider.validate_client(name, secret, oidc_client_config).await
-        },
+            oidc_provider
+                .validate_client(name, secret, oidc_client_config)
+                .await
+        }
+        SecretRequest::GitLabProjectAccessToken(token_config) => {
+            let Some(gitlab_project_access_token_provider) = GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref() else {
+                return Err("No GitLab project access token provider configured!".into());
+            };
+            gitlab_project_access_token_provider
+                .validate_token(name, secret, token_config)
+                .await
+        }
     }
 }
