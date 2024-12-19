@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequest {
     OpenIdConnect(OIDCConfig),
-    GitLabProjectAccessToken(GitLabProjectAccessTokenConfig)
+    GitLabProjectAccessToken(GitLabProjectAccessTokenConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
