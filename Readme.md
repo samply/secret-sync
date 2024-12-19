@@ -64,7 +64,7 @@ services:
 
       # Optional GitLab parameters
       # The base URL for API calls, e.g. "https://gitlab.com/"
-      - GITLAB_URL=https://gitlab.com/
+      - GITLAB_URL=
       # A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
       - GITLAB_API_ACCESS_TOKEN=
 ```

@@ -30,8 +30,8 @@ services:
       - BEAM_URL=http://proxy:8082
       - BEAM_ID=app2.proxy2.broker
       - BEAM_SECRET=App1Secret
-      - GITLAB_URL=https://git.verbis.dkfz.de/
-      - GITLAB_API_ACCESS_TOKEN=YjTXxdzLMak-XXscyxy4
+      - GITLAB_URL=
+      - GITLAB_API_ACCESS_TOKEN=
     extra_hosts:
       # Containers can access the host at 172.17.0.1
       - "proxy:172.17.0.1"

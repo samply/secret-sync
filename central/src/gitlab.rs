@@ -81,7 +81,7 @@ impl GitLabProjectAccessTokenProvider {
                 "HTTP status error {} for url {} with body {}",
                 response.status(),
                 response.url().clone(),
-                response.text().await.unwrap()
+                response.text().await.map_err(|e| e.to_string())?
             ))
         }
     }
