@@ -18,9 +18,9 @@ services:
     environment:
       # See below for the format specification
       - SECRET_DEFINITIONS=${ARGS}
-      # The beam id of the secret sync central component that answers OIDC requests (optional)
+      # The beam app id of the secret sync central component that answers OIDC requests (optional)
       - OIDC_PROVIDER=${OIDC_PROVIDER_APP_ID}
-      # The beam id of the secret sync central component that answers GitLab project access token requests (optional)
+      # The beam app id of the secret sync central component that answers GitLab project access token requests (optional)
       - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
       # Required args for the beam proxy for more options look at the beam Readme
       - PROXY_ID=proxy1.broker
