@@ -16,7 +16,7 @@ services:
       - PROXY_ID=proxy1.broker
       - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
       - BROKER_URL=http://broker:8080
-      - "SECRET_DEFINITIONS=GitLabProjectAccessToken:foobar:bridgehead-configurations-test/foobar\x1EGitLabProjectAccessToken:justatest:bridgehead-configurations-test/just-a-test-project"
+      - SECRET_DEFINITIONS=GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:bridgehead-configuration
       - CACHE_PATH=/usr/local/cache/cache.txt
     volumes:
       - ./cache:/usr/local/cache

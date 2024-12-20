@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretRequest {
     OpenIdConnect(OIDCConfig),
-    GitLabProjectAccessToken(GitLabProjectAccessTokenConfig),
+    GitLabProjectAccessToken(GitLabProject),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -15,10 +15,12 @@ pub struct OIDCConfig {
     pub redirect_urls: Vec<String>,
 }
 
+/// Describes the GitLab project for which a token is requested
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitLabProjectAccessTokenConfig {
-    /// Path to the repository on GitLab, typically of the format "group/project"
-    pub project_path: String,
+pub enum GitLabProject {
+    /// Request a token for the bridgehead configuration repository of the respective site. The repository
+    /// is derived from the beam id of the secret sync local component that requests the token.
+    BridgeheadConfiguration,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
