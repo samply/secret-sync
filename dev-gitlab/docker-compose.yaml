@@ -1,0 +1,52 @@
+version: "3"
+
+# This docker-compose.yaml requires that the beam demo network is running on the same computer. To run the beam demo
+# network run`./dev/beamdev demo` in the beam repository. It also assumes that the beam repository is located at
+# `../../beam` relative to this directory. If your beam directory is located somewhere else, you can overwrite this
+# default with the `BEAM_DIR` environment variable. It is recommended to set the GITLAB_API_ACCESS_TOKEN environment
+# variable in the `.env` file which is part of .gitignore and automatically loaded by docker compose.
+
+services:
+  # This container contains both a beam proxy (proxy1.broker) and the secret sync local component (secret-sync.proxy1.broker)
+  local:
+    build:
+      context: ../
+      dockerfile: Dockerfile.local
+    environment:
+      - PROXY_ID=proxy1.broker
+      - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
+      - BROKER_URL=http://broker:8080
+      - "SECRET_DEFINITIONS=GitLabProjectAccessToken:foobar:bridgehead-configurations-test/foobar\x1EGitLabProjectAccessToken:justatest:bridgehead-configurations-test/just-a-test-project"
+      - CACHE_PATH=/usr/local/cache/cache.txt
+    volumes:
+      - ./cache:/usr/local/cache
+    secrets:
+      - privkey.pem
+      - root.crt.pem
+    networks:
+      - dev_default
+
+  # This container contains the secret sync central component (app2.proxy2.broker)
+  central:
+    build:
+      context: ../
+      dockerfile: Dockerfile.central
+    environment:
+      - BEAM_URL=http://proxy2:8082
+      - BEAM_ID=app2.proxy2.broker
+      - BEAM_SECRET=App1Secret
+      - GITLAB_URL=https://git.verbis.dkfz.de/
+      - GITLAB_API_ACCESS_TOKEN=${GITLAB_API_ACCESS_TOKEN}
+    networks:
+      - dev_default
+
+secrets:
+  privkey.pem:
+    file: ${BEAM_DIR:-../../beam}/dev/pki/proxy1.priv.pem
+  root.crt.pem:
+    file: ${BEAM_DIR:-../../beam}/dev/pki/root.crt.pem
+
+networks:
+  # Add our containers to the beam demo Docker network
+  dev_default:
+    external: true

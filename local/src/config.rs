@@ -2,12 +2,12 @@ use std::{path::PathBuf, convert::Infallible, str::FromStr};
 
 use beam_lib::AppId;
 use clap::Parser;
-use shared::{SecretRequest, OIDCConfig};
+use shared::{GitLabProjectAccessTokenConfig, OIDCConfig, SecretRequest};
 
 /// Local secret sync
 #[derive(Debug, Parser)]
 pub struct Config {
-    /// Will be used to create this apps beam app id and is already required by the beam proxy
+    /// Will be used to create this apps beam app id by prepending the prefix "secret-sync."
     #[clap(long, env, hide(true))]
     pub proxy_id: String,
 
@@ -19,9 +19,13 @@ pub struct Config {
     #[clap(long, env, default_value = "/usr/local/cache")]
     pub cache_path: PathBuf,
 
-    /// The app id of this application
+    /// The beam app id of the secret sync central component that answers OIDC requests
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub oidc_provider: Option<AppId>,
+
+    /// The beam app id of the secret sync central component that answers GitLab project access token requests
+    #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
+    pub gitlab_project_access_token_provider: Option<AppId>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,9 +63,17 @@ impl FromStr for SecretArg {
                     _ => return Err(format!("Invalid OIDC parameters '{args}'. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
                 };
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
-                Ok(SecretRequest::OpenIdConnect(OIDCConfig{ redirect_urls, is_public }))
-            },
-            _ => Err(format!("Unknown secret type {secret_type}"))
+                Ok(SecretRequest::OpenIdConnect(OIDCConfig {
+                    redirect_urls,
+                    is_public,
+                }))
+            }
+            "GitLabProjectAccessToken" => Ok(SecretRequest::GitLabProjectAccessToken(
+                GitLabProjectAccessTokenConfig {
+                    project_path: args.to_owned(),
+                },
+            )),
+            _ => Err(format!("Unknown secret type {secret_type}")),
         }?;
 
         Ok(SecretArg { name: name.to_string(), request })

@@ -95,35 +95,60 @@ async fn main() -> ExitCode {
 }
 
 async fn send_secret_request(
-    mut secret_tasks: Vec<SecretRequestType>,
+    secret_requests: Vec<SecretRequestType>,
 ) -> beam_lib::Result<Vec<Result<SecretResult, String>>> {
     wait_for_beam_proxy().await?;
-    let mut tasks = Vec::with_capacity(secret_tasks.len());
+
     // Partition tasks based on task type to send them to the correct app to fulfill the task
-    let (oidc, rest) = secret_tasks
-        .into_iter()
-        .partition(|v| matches!(v.deref(), SecretRequest::OpenIdConnect { .. }));
-    secret_tasks = rest;
-    if !oidc.is_empty() {
+    let mut oidc_requests = Vec::new();
+    let mut gitlab_project_access_token_requests = Vec::new();
+    for secret_request in secret_requests {
+        match secret_request.deref() {
+            SecretRequest::OpenIdConnect(_) => oidc_requests.push(secret_request),
+            SecretRequest::GitLabProjectAccessToken(_) => {
+                gitlab_project_access_token_requests.push(secret_request)
+            }
+        }
+    }
+
+    let mut tasks = Vec::new();
+    if !oidc_requests.is_empty() {
         if let Some(oidc_provider) = &CONFIG.oidc_provider {
             tasks.push(TaskRequest {
                 id: MsgId::new(),
                 from: APP_ID.clone(),
                 to: vec![oidc_provider.clone()],
-                body: oidc,
+                body: oidc_requests,
                 ttl: "60s".to_string(),
                 failure_strategy: beam_lib::FailureStrategy::Discard,
                 metadata: ().try_into().unwrap(),
             });
         } else {
-            return Err(beam_lib::BeamError::Other("Got OIDC connect tasks but no OIDC provider was configurad".into()));
+            return Err(beam_lib::BeamError::Other(
+                "Got OIDC connect tasks but no OIDC provider was configured".into(),
+            ));
         }
     }
-    assert_eq!(
-        secret_tasks.len(),
-        0,
-        "All secret tasks should be partitioned into their beam tasks"
-    );
+    if !gitlab_project_access_token_requests.is_empty() {
+        if let Some(gitlab_project_access_token_provider) =
+            &CONFIG.gitlab_project_access_token_provider
+        {
+            tasks.push(TaskRequest {
+                id: MsgId::new(),
+                from: APP_ID.clone(),
+                to: vec![gitlab_project_access_token_provider.clone()],
+                body: gitlab_project_access_token_requests,
+                ttl: "60s".to_string(),
+                failure_strategy: beam_lib::FailureStrategy::Discard,
+                metadata: ().try_into().unwrap(),
+            });
+        } else {
+            return Err(beam_lib::BeamError::Other(
+                "Got GitLab project access token tasks but no GitLab project access token provider was configured".into(),
+            ));
+        }
+    }
+
     futures::future::try_join_all(tasks.into_iter().map(|t| async move {
         BEAM_CLIENT.post_task(&t).await?;
         BEAM_CLIENT.poll_results::<Vec<Result<SecretResult, String>>>(&t.id, &BlockingOptions::from_count(1))
