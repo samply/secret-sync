@@ -104,7 +104,7 @@ impl GitLabProjectAccessTokenProvider {
                     ))
                     .map_err(|e| e.to_string())?,
             )
-            .basic_auth("any-non-blank-username", Some(secret))
+            .basic_auth("placeholder-for-samply-secret-sync", Some(secret))
             .send()
             .await
             .map_err(|e| e.to_string())?;
