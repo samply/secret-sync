@@ -84,10 +84,10 @@ Example:
 
 ### GitLab Project Access Token
 
-Create a GitLab project access token for read access (git clone/pull) to a repository.
+Create a GitLab project access token for read access (git clone/pull) to the bridgehead configuration repository.
 
 Secret type: `GitLabProjectAccessToken`
 
-The argument is the path to the repository on GitLab, typically of the format "group/project".
+The argument is always `bridgehead-configuration`.
 
-Example: `GitLabProjectAccessToken:foobar:bridgehead-configurations/foobar`
+Example: `GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:bridgehead-configuration`
