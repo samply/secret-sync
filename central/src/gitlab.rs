@@ -36,7 +36,7 @@ fn derive_bridgehead_config_repo_from_beam_id(requester: &AppId) -> Result<Strin
         "broker.bbmri.de" => "bbmri-bridgehead-configs", // gbn
         "test-no-real-data.broker.samply.de" => "bridgehead-configurations", // cce, itcc, kr
         "broker.hector.dkfz.de" => "dhki", // dhki
-        _ => return Err(format!("Bridgehead configuration repository not known for beam id {requester}")),
+        _ => return Err(format!("Bridgehead configuration repository group not known for broker {broker}")),
     };
 
     Ok(match group {
