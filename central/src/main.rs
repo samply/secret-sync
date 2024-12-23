@@ -94,14 +94,14 @@ pub async fn create_secret(request: SecretRequest, requester: &AppId) -> Result<
             let name = requester.as_ref().split('.').nth(1).unwrap();
             oidc_provider.create_client(name, oidc_client_config).await
         }
-        SecretRequest::GitLabProjectAccessToken(token_config) => {
+        SecretRequest::GitLabProjectAccessToken => {
             let Some(gitlab_project_access_token_provider) =
                 GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
             else {
                 return Err("No GitLab project access token provider configured!".into());
             };
             gitlab_project_access_token_provider
-                .create_token(requester, token_config)
+                .create_token(requester)
                 .await
         }
     }
@@ -118,14 +118,14 @@ pub async fn is_valid(secret: &str, request: &SecretRequest, requester: &AppId) 
                 .validate_client(name, secret, oidc_client_config)
                 .await
         }
-        SecretRequest::GitLabProjectAccessToken(token_config) => {
+        SecretRequest::GitLabProjectAccessToken => {
             let Some(gitlab_project_access_token_provider) =
                 GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
             else {
                 return Err("No GitLab project access token provider configured!".into());
             };
             gitlab_project_access_token_provider
-                .validate_token(requester, secret, token_config)
+                .validate_token(requester, secret)
                 .await
         }
     }

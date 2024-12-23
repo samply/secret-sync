@@ -2,7 +2,7 @@ use std::{path::PathBuf, convert::Infallible, str::FromStr};
 
 use beam_lib::AppId;
 use clap::Parser;
-use shared::{GitLabProject, OIDCConfig, SecretRequest};
+use shared::{OIDCConfig, SecretRequest};
 
 /// Local secret sync
 #[derive(Debug, Parser)]
@@ -70,7 +70,7 @@ impl FromStr for SecretArg {
             }
             "GitLabProjectAccessToken" => {
                 match args {
-                    "bridgehead-configuration" => Ok(SecretRequest::GitLabProjectAccessToken(GitLabProject::BridgeheadConfiguration)),
+                    "bridgehead-configuration" => Ok(SecretRequest::GitLabProjectAccessToken),
                     _ => return Err(format!("Invalid GitLabProjectAccessToken parameter '{args}'")),
                 }
             }

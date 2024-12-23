@@ -2,7 +2,7 @@ use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
 use serde::Deserialize;
 use serde_json::json;
-use shared::{GitLabProject, SecretResult};
+use shared::SecretResult;
 
 #[derive(Parser)]
 struct GitLabApiConfig {
@@ -64,11 +64,8 @@ impl GitLabProjectAccessTokenProvider {
     pub async fn create_token(
         &self,
         requester: &AppId,
-        client_config: GitLabProject,
     ) -> Result<SecretResult, String> {
-        let project_path = match client_config {
-            GitLabProject::BridgeheadConfiguration => derive_bridgehead_config_repo_from_beam_id(requester)?
-        };
+        let project_path = derive_bridgehead_config_repo_from_beam_id(requester)?;
 
         // Expire in 1 week
         let expires_at = (chrono::Local::now() + chrono::TimeDelta::weeks(1))
@@ -117,11 +114,8 @@ impl GitLabProjectAccessTokenProvider {
         &self,
         requester: &AppId,
         secret: &str,
-        client_config: &GitLabProject,
     ) -> Result<bool, String> {
-        let project_path = match client_config {
-            GitLabProject::BridgeheadConfiguration => derive_bridgehead_config_repo_from_beam_id(requester)?
-        };
+        let project_path = derive_bridgehead_config_repo_from_beam_id(requester)?;
 
         let response = self
             .client
