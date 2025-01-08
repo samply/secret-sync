@@ -58,38 +58,6 @@ async fn main() {
             }
         }
     }
-    /*
-     loop {
-         tokio::select! {
-             _ = shutdown_signal() => {
-                 break;
-             },
-             result =  BEAM_CLIENT.poll_pending_tasks(&block_one) => {
-                 match result {
-                 Ok(tasks) => tasks.into_iter().for_each(|task| {
-                 if !seen.contains(&task.id) {
-                     seen.insert(task.id);
-                     tokio::spawn(handle_task(task));
-                 }
-                 }),
-                 Err(beam_lib::BeamError::ReqwestError(e)) if e.is_connect() => {
-                 eprintln!(
-                     "Failed to connect to beam proxy on {}. Retrying in 30s",
-                     CONFIG.beam_url
-                 );
-                 tokio::time::sleep(Duration::from_secs(30)).await
-                 }
-                 Err(e) => {
-                 eprintln!("Error during task polling {e}");
-                 tokio::time::sleep(Duration::from_secs(5)).await;
-                 }
-
-                 }
-
-             }
-         }
-    }
-     */
 }
 
 pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
