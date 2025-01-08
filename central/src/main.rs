@@ -3,16 +3,13 @@ use std::{collections::HashSet, time::Duration};
 use auth::config::{Config, OIDCProvider};
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
-use config::{Config, OIDCProvider};
 use gitlab::GitLabProjectAccessTokenProvider;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretRequestType, SecretResult};
-use tokio::time::sleep;
 use tracing::info;
 
-mod config;
+mod auth;
 mod gitlab;
-mod keycloak;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -40,7 +37,6 @@ async fn main() {
     // TODO: Remove once beam feature/stream-tasks is merged
     let mut seen = HashSet::new();
     let block_one = BlockingOptions::from_count(1);
-    let retry_timer = sleep(Duration::from_secs(0)).fuse();
     // TODO: Fast shutdown
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
@@ -89,16 +85,26 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
     }
 }
 
-pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result<SecretResult, String> {
+pub async fn handle_secret_task(
+    task: SecretRequestType,
+    from: &AppId,
+) -> Result<SecretResult, String> {
     println!("Working on secret task {task:?} from {from}");
     match task {
-        SecretRequestType::ValidateOrCreate { current, request } if is_valid(&current, &request, from).await? => Ok(SecretResult::AlreadyValid),
-        SecretRequestType::ValidateOrCreate { request, .. } |
-        SecretRequestType::Create(request) => create_secret(request, from).await,
+        SecretRequestType::ValidateOrCreate { current, request }
+            if is_valid(&current, &request, from).await? =>
+        {
+            Ok(SecretResult::AlreadyValid)
+        }
+        SecretRequestType::ValidateOrCreate { request, .. }
+        | SecretRequestType::Create(request) => create_secret(request, from).await,
     }
 }
 
-pub async fn create_secret(request: SecretRequest, requester: &AppId) -> Result<SecretResult, String> {
+pub async fn create_secret(
+    request: SecretRequest,
+    requester: &AppId,
+) -> Result<SecretResult, String> {
     match request {
         SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
@@ -120,7 +126,11 @@ pub async fn create_secret(request: SecretRequest, requester: &AppId) -> Result<
     }
 }
 
-pub async fn is_valid(secret: &str, request: &SecretRequest, requester: &AppId) -> Result<bool, String> {
+pub async fn is_valid(
+    secret: &str,
+    request: &SecretRequest,
+    requester: &AppId,
+) -> Result<bool, String> {
     match request {
         SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
