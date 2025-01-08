@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
-use arboard::Clipboard;
 use tracing::debug;
 use tracing::field::debug;
 #[derive(Deserialize, Serialize, Debug)]
@@ -26,10 +25,6 @@ pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
         .with_test_writer()
         .try_init();
     let token = std::env::var("AUTHENTIK_TOKEN").expect("Missing ENV Authentik_Token");
-    // copy from clipboard
-    //let mut clipboard = Clipboard::new().unwrap();
-    //let t = clipboard.get_text().unwrap();
-    //debug!("test: {:?}", t);
     Ok((
         token,
         AuthentikConfig {
