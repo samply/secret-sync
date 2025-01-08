@@ -7,7 +7,7 @@ use shared::{OIDCConfig, SecretRequest};
 /// Local secret sync
 #[derive(Debug, Parser)]
 pub struct Config {
-    /// Will be used to create this apps beam app id and is already required by the beam proxy
+    /// Will be used to create this apps beam app id by prepending the prefix "secret-sync."
     #[clap(long, env, hide(true))]
     pub proxy_id: String,
 
@@ -19,9 +19,13 @@ pub struct Config {
     #[clap(long, env, default_value = "/usr/local/cache")]
     pub cache_path: PathBuf,
 
-    /// The app id of this application
+    /// The beam app id of the secret sync central component that answers OIDC requests
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub oidc_provider: Option<AppId>,
+
+    /// The beam app id of the secret sync central component that answers GitLab project access token requests
+    #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
+    pub gitlab_project_access_token_provider: Option<AppId>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +71,12 @@ impl FromStr for SecretArg {
                     redirect_urls,
                     is_public,
                 }))
+            }
+            "GitLabProjectAccessToken" => {
+                match args {
+                    "bridgehead-configuration" => Ok(SecretRequest::GitLabProjectAccessToken),
+                    _ => return Err(format!("Invalid GitLabProjectAccessToken parameter '{args}'")),
+                }
             }
             _ => Err(format!("Unknown secret type {secret_type}")),
         }?;

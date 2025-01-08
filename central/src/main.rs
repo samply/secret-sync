@@ -3,13 +3,16 @@ use std::{collections::HashSet, time::Duration};
 use auth::config::{Config, OIDCProvider};
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
-use futures::FutureExt;
+use config::{Config, OIDCProvider};
+use gitlab::GitLabProjectAccessTokenProvider;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretRequestType, SecretResult};
 use tokio::time::sleep;
 use tracing::info;
 
-mod auth;
+mod config;
+mod gitlab;
+mod keycloak;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -26,6 +29,8 @@ pub fn get_beamclient() -> Client {
 }
 
 pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
+pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitLabProjectAccessTokenProvider>> =
+    Lazy::new(GitLabProjectAccessTokenProvider::try_init);
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
@@ -84,42 +89,56 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
     }
 }
 
-pub async fn handle_secret_task(
-    task: SecretRequestType,
-    from: &AppId,
-) -> Result<SecretResult, String> {
-    let name = from.as_ref().split('.').nth(1).unwrap();
+pub async fn handle_secret_task(task: SecretRequestType, from: &AppId) -> Result<SecretResult, String> {
     println!("Working on secret task {task:?} from {from}");
     match task {
-        SecretRequestType::ValidateOrCreate { current, request }
-            if is_valid(&current, &request, name).await? =>
-        {
-            Ok(SecretResult::AlreadyValid)
-        }
-        SecretRequestType::ValidateOrCreate { request, .. }
-        | SecretRequestType::Create(request) => create_secret(request, name).await,
+        SecretRequestType::ValidateOrCreate { current, request } if is_valid(&current, &request, from).await? => Ok(SecretResult::AlreadyValid),
+        SecretRequestType::ValidateOrCreate { request, .. } |
+        SecretRequestType::Create(request) => create_secret(request, from).await,
     }
 }
 
-pub async fn create_secret(request: SecretRequest, name: &str) -> Result<SecretResult, String> {
+pub async fn create_secret(request: SecretRequest, requester: &AppId) -> Result<SecretResult, String> {
     match request {
         SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
+            let name = requester.as_ref().split('.').nth(1).unwrap();
             oidc_provider.create_client(name, oidc_client_config).await
         }
+        SecretRequest::GitLabProjectAccessToken => {
+            let Some(gitlab_project_access_token_provider) =
+                GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
+            else {
+                return Err("No GitLab project access token provider configured!".into());
+            };
+            gitlab_project_access_token_provider
+                .create_token(requester)
+                .await
+        }
     }
 }
 
-pub async fn is_valid(secret: &str, request: &SecretRequest, name: &str) -> Result<bool, String> {
+pub async fn is_valid(secret: &str, request: &SecretRequest, requester: &AppId) -> Result<bool, String> {
     match request {
         SecretRequest::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
+            let name = requester.as_ref().split('.').nth(1).unwrap();
             oidc_provider
                 .validate_client(name, secret, oidc_client_config)
+                .await
+        }
+        SecretRequest::GitLabProjectAccessToken => {
+            let Some(gitlab_project_access_token_provider) =
+                GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
+            else {
+                return Err("No GitLab project access token provider configured!".into());
+            };
+            gitlab_project_access_token_provider
+                .validate_token(requester, secret)
                 .await
         }
     }
