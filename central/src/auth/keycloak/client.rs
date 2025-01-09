@@ -1,11 +1,13 @@
-use crate::{auth::keycloak::add_service_account_roles, CLIENT};
+use crate::{
+    auth::{generate_secret, keycloak::add_service_account_roles},
+    CLIENT,
+};
 use anyhow::bail;
-use beam_lib::reqwest::{self, StatusCode, Url};
-use clap::Parser;
+use beam_lib::reqwest::{self, StatusCode};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 
-use super::{create_groups, generate_secret, KeyCloakConfig};
+use super::{create_groups, KeyCloakConfig};
 
 pub async fn get_client(
     name: &str,

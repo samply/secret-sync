@@ -4,7 +4,7 @@ use crate::auth::authentik::provider::{generate_provider_values, get_provider, g
 use crate::auth::authentik::{
     combine_app_provider, get_application, get_uuid, validate_application, AuthentikConfig,
 };
-use crate::{get_beamclient, CLIENT};
+use crate::CLIENT;
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -24,6 +24,8 @@ pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .try_init();
+    //let token = "";
+    // export AUTHENTIK_TOKEN=
     let token = std::env::var("AUTHENTIK_TOKEN").expect("Missing ENV Authentik_Token");
     Ok((
         token,
@@ -45,8 +47,8 @@ async fn get_access_test() {
         .post(path_url)
         .form(&json!({
             "grant_type": "client_credentials",
-            "client_id": "UtKuQ4Yh7xsPOqI8yRH86azKhEjSmrQMo2MyrvNi",
-            "client_secret": "wFfVgSj1w25xpIvpZGad0nLU1NglYUSYMpPyzhbptDPEGlLlaJ0lHStEN0HHuiHMtTlqMtJoMIa2Ye4psz8EBMLdliahsqYatgcmMEYPvTL3BK0bS1YLVzhhXbxgzVgi",
+            "client_id": "",
+            "client_secret": "",
             "scope": "openid"
         }))
         .send()
@@ -76,10 +78,10 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
             }
         ))
         .form(&json!({
-            "client_id": "admin-cli",
-            "username": "Merlin@frech.com",
-            "password": "MErlin",
-            "grant_type": "password"
+            "client_id": "",
+            "username": "",
+            "password": "",
+            "grant_type": ""
         }))
         .send()
         .await?
@@ -92,7 +94,7 @@ async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    let name = "green";
+    let name = "tree";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -103,11 +105,11 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
+        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };
-    let provider_pk = get_provider(name, &token, &client_config, &conf, &get_beamclient())
+    let provider_pk = get_provider(name, &token, &client_config, &conf)
         .await?
         .get("pk")
         .and_then(|v| v.as_i64())
@@ -123,7 +125,7 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf, &get_beamclient()).await?)
+        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };
@@ -135,7 +137,7 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
-    create_groups("next2", &token, &conf, &get_beamclient()).await
+    create_groups("next2", &token, &conf).await
 }
 
 #[ignore = "Requires setting up a authentik"]
@@ -150,7 +152,7 @@ async fn test_flow() {
     )
     .unwrap();
     //let flow_url = "api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
-    let res = get_uuid(&query_url, &token, test_key, &get_beamclient()).await;
+    let res = get_uuid(&query_url, &token, test_key).await;
     debug!(res);
     match res {
         Some(uuid) => {
@@ -183,7 +185,7 @@ async fn test_property() {
     )
     .unwrap();
     //let flow_url = "api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
-    let res = get_uuid(&query_url, &token, test_key, &get_beamclient()).await;
+    let res = get_uuid(&query_url, &token, test_key).await;
     //debug!("Result Property for {test_key}: {:#?}", res);
     debug!("{:?}", query_url);
     debug!("{:?}", res);
@@ -193,21 +195,33 @@ async fn test_property() {
 #[tokio::test]
 async fn create_property() {
     let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
-    let acr = "not-needed2".to_owned();
-    let ext = "return{}".to_owned();
-    let json_property = json!({
-    "name": acr,
-    "expression": ext
-    });
-    let property_url = "api/v3/propertymappings/source/oauth/";
-    let res = get_beamclient()
-        .post(conf.authentik_url.join(property_url).expect("No valid Url"))
-        .bearer_auth(token)
-        .json(&json_property)
-        .send()
-        .await
-        .expect("no response");
-    tracing::debug!("Result: {:#?}", res);
+    // let flow_auth = "authorization_flow";
+    // let flow_invalidation = "default-provider-invalidation-flow";
+    let property_keys = vec![
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "microprofile-jwt",
+        "groups",
+    ];
+    for key in property_keys {
+        let ext = "return{}".to_owned();
+        let json_property = json!({
+        "name": key,
+        "expression": ext
+        });
+        let property_url = "api/v3/propertymappings/source/oauth/";
+        let res = CLIENT
+            .post(conf.authentik_url.join(property_url).expect("No valid Url"))
+            .bearer_auth(&token)
+            .json(&json_property)
+            .send()
+            .await
+            .expect("no response");
+        tracing::debug!("Result: {:#?}", res);
+    }
 }
 
 #[ignore = "Requires setting up a authentik"]
@@ -224,8 +238,7 @@ async fn test_validate_client() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
         ],
     };
-    let res =
-        compare_app_provider(&token, name, &client_config, "", &conf, &get_beamclient()).await?;
+    let res = compare_app_provider(&token, name, &client_config, "", &conf).await?;
     debug!("Validate: {res}");
     Ok(())
 }
@@ -244,14 +257,14 @@ async fn test_patch_provider() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
         ],
     };
-    let pk_id = get_provider_id(name, &token, &client_config, &conf, &get_beamclient())
+    let pk_id = get_provider_id(name, &token, &client_config, &conf)
         .await
         .unwrap();
     let generated_provider =
         generate_provider_values(name, &client_config, "", &conf, &token).await?;
     debug!("{:#?}", generated_provider);
 
-    let res = get_beamclient()
+    let res = CLIENT
         .patch(
             conf.authentik_url
                 .join(&format!("api/v3/providers/oauth2/{}/", pk_id))?,
@@ -268,7 +281,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
     debug!("Provider {name} updated");
     debug!(
         "App now: {:#?}",
-        get_application(name, &token, &client_config, &conf, &get_beamclient()).await?
+        get_application(name, &token, &conf).await?
     );
     Ok(())
 }

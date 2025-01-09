@@ -1,13 +1,11 @@
-use std::i64;
-
-use anyhow::Context;
 use beam_lib::reqwest::{self, Response, StatusCode};
 use reqwest::{Client, Url};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
+use std::i64;
 use tracing::{debug, info};
 
-use crate::auth::config::FlowPropertymapping;
+use crate::CLIENT;
 
 use super::{
     get_uuid,
@@ -15,35 +13,24 @@ use super::{
     AuthentikConfig,
 };
 
-pub fn generate_app_values(provider: i64, name: &str, oidc_client_config: &OIDCConfig) -> Value {
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
+pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
     json!({
-        "name": id,
-        "slug": id,
+        "name": client_id,
+        "slug": client_id,
         "provider": provider,
-        "group": name
+        "group": client_id.split('-').next().expect("group name does not contain - ")
     })
 }
 
 pub async fn generate_application(
     provider: i64,
-    name: &str,
-    oidc_client_config: &OIDCConfig,
+    client_id: &str,
     conf: &AuthentikConfig,
     token: &str,
-    client: &Client,
 ) -> reqwest::Result<Response> {
-    debug!(provider);
-    let app_value = generate_app_values(provider, name, oidc_client_config);
+    let app_value = generate_app_values(provider, client_id);
     debug!("{:#?}", app_value);
-    client
+    CLIENT
         .post(
             conf.authentik_url
                 .join("api/v3/core/applications/")
@@ -57,31 +44,27 @@ pub async fn generate_application(
 
 pub async fn check_app_result(
     token: &str,
-    name: &str,
+    client_id: &str,
     provider_pk: i64,
-    oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> anyhow::Result<bool> {
-    let res =
-        generate_application(provider_pk, name, oidc_client_config, conf, token, client).await?;
+    let res = generate_application(provider_pk, client_id, conf, token).await?;
     match res.status() {
         StatusCode::CREATED => {
-            info!("Application for {name} created.");
+            info!("Application for {client_id} created.");
             Ok(true)
         }
         StatusCode::BAD_REQUEST => {
-            let conflicting_client =
-                get_application(name, token, oidc_client_config, conf, client).await?;
+            let conflicting_client = get_application(client_id, token, conf).await?;
             if app_configs_match(
                 &conflicting_client,
-                &generate_app_values(provider_pk, name, oidc_client_config),
+                &generate_app_values(provider_pk, client_id),
             ) {
-                info!("Application {name} exists.");
+                info!("Application {client_id} exists.");
                 Ok(true)
             } else {
-                info!("Application for {name} is updated.");
-                Ok(client
+                info!("Application for {client_id} is updated.");
+                Ok(CLIENT
                     .put(
                         conf.authentik_url.join("api/v3/core/applicaions/")?.join(
                             conflicting_client
@@ -91,7 +74,7 @@ pub async fn check_app_result(
                         )?,
                     )
                     .bearer_auth(token)
-                    .json(&generate_app_values(provider_pk, name, oidc_client_config))
+                    .json(&generate_app_values(provider_pk, client_id))
                     .send()
                     .await?
                     .status()
@@ -103,24 +86,14 @@ pub async fn check_app_result(
 }
 
 pub async fn get_application(
-    name: &str,
+    client_id: &str,
     token: &str,
-    oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> reqwest::Result<serde_json::Value> {
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
-    client
+    CLIENT
         .get(
             conf.authentik_url
-                .join(&format!("api/v3/core/applications/{id}/"))
+                .join(&format!("api/v3/core/applications/{client_id}/"))
                 .expect("Error parsing app url"),
         )
         .bearer_auth(token)
@@ -137,18 +110,22 @@ pub async fn compare_app_provider(
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> anyhow::Result<bool> {
-    let provider_pk = get_provider_id(name, token, oidc_client_config, conf, client).await;
+    let client_id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
+
+    let provider_pk = get_provider_id(&client_id, token, oidc_client_config, conf).await;
     match provider_pk {
         Some(pr_id) => {
-            let app_res = get_application(name, token, oidc_client_config, conf, client).await?;
-            if app_configs_match(
-                &app_res,
-                &generate_app_values(pr_id, name, oidc_client_config),
-            ) {
-                return compare_provider(token, name, oidc_client_config, conf, secret, client)
-                    .await;
+            let app_res = get_application(&client_id, token, conf).await?;
+            if app_configs_match(&app_res, &generate_app_values(pr_id, &client_id)) {
+                return compare_provider(token, &client_id, oidc_client_config, conf, secret).await;
             } else {
                 return Ok(false);
             }

@@ -1,13 +1,13 @@
 use anyhow::{Context, Ok};
-use reqwest::{Client, Url};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use tracing::debug;
 
-use crate::auth::config::FlowPropertymapping;
+use crate::CLIENT;
 
-use super::AuthentikConfig;
+use super::{AuthentikConfig, FlowPropertymapping};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
@@ -16,7 +16,7 @@ pub struct RedirectURIS {
 }
 
 pub async fn generate_provider_values(
-    name: &str,
+    client_id: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
@@ -25,18 +25,10 @@ pub async fn generate_provider_values(
     let mapping = FlowPropertymapping::new(conf, token).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
     // only one redirect url is possible
     let mut json = json!({
-        "name": id,
-        "client_id": id,
+        "name": client_id,
+        "client_id": client_id,
         "authorization_flow": mapping.authorization_flow,
         "invalidation_flow": mapping.invalidation_flow,
         "property_mappings": [
@@ -51,52 +43,34 @@ pub async fn generate_provider_values(
     });
 
     if !oidc_client_config.redirect_urls.is_empty() {
-        let mut res_urls: Vec<RedirectURIS> = vec![];
-        for url in &oidc_client_config.redirect_urls {
-            res_urls.push(RedirectURIS {
+        let res_urls: Vec<RedirectURIS> = oidc_client_config
+            .redirect_urls
+            .iter()
+            .map(|url| RedirectURIS {
                 matching_mode: "strict".to_owned(),
                 url: url.to_owned(),
-            });
-        }
-
-        json.as_object_mut()
-            .unwrap()
-            .insert("redirect_uris".to_owned(), json!(res_urls));
+            })
+            .collect();
+        json["redirect_uris"] = json!(res_urls);
     }
 
-    if oidc_client_config.is_public {
-        json.as_object_mut()
-            .unwrap()
-            .insert("client_type".to_owned(), "public".into());
+    json["client_type"] = if oidc_client_config.is_public {
+        json!("public")
     } else {
-        json.as_object_mut()
-            .unwrap()
-            .insert("client_type".to_owned(), "confidential".into());
-    }
+        json!("confidential")
+    };
     if let Some(secret) = secret {
-        json.as_object_mut()
-            .unwrap()
-            .insert("client_secret".to_owned(), secret.into());
+        json["client_secret"] = json!(secret);
     }
     Ok(json)
 }
 
 pub async fn get_provider_id(
-    name: &str,
+    client_id: &str,
     token: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> Option<i64> {
-    let id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
-
     //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
     let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
     let query_url = Url::parse_with_params(
@@ -105,9 +79,9 @@ pub async fn get_provider_id(
     )
     .unwrap();
 
-    let target_value: serde_json::Value = client
+    let target_value: serde_json::Value = CLIENT
         .get(query_url.to_owned())
-        .query(&[("search", &id)])
+        .query(&[("search", &client_id)])
         .bearer_auth(token)
         .send()
         .await
@@ -115,7 +89,7 @@ pub async fn get_provider_id(
         .json()
         .await
         .ok()?;
-    debug!("Value search key {id}: {:?}", &target_value);
+    debug!("Value search key {client_id}: {:?}", &target_value);
     // pk is the uuid for this result
     target_value
         .as_object()
@@ -128,20 +102,19 @@ pub async fn get_provider_id(
 }
 
 pub async fn get_provider(
-    name: &str,
+    client_id: &str,
     token: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> anyhow::Result<Value> {
-    let res = get_provider_id(name, token, oidc_client_config, conf, client).await;
+    let res = get_provider_id(client_id, token, oidc_client_config, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
         .authentik_url
         .join(&format!("api/v3/providers/oauth2/{pk}/"))
         .context("Error parsing provider")?;
-
-    let cli = client.get(base_url);
+    // TODO: remove debug
+    let cli = CLIENT.get(base_url);
     debug!("cli {:?}", cli);
 
     cli.bearer_auth(token)
@@ -155,15 +128,14 @@ pub async fn get_provider(
 
 pub async fn compare_provider(
     token: &str,
-    name: &str,
+    client_id: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     secret: &str,
-    client: &Client,
 ) -> anyhow::Result<bool> {
-    let client = get_provider(name, token, oidc_client_config, conf, client).await?;
+    let client = get_provider(client_id, token, oidc_client_config, conf).await?;
     let wanted_client =
-        generate_provider_values(name, oidc_client_config, secret, conf, token).await?;
+        generate_provider_values(client_id, oidc_client_config, secret, conf, token).await?;
     debug!("{:#?}", client);
     debug!("{:#?}", wanted_client);
     Ok(provider_configs_match(&client, &wanted_client))

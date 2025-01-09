@@ -1,8 +1,8 @@
 use std::{collections::HashSet, time::Duration};
 
-use auth::config::{Config, OIDCProvider};
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
+use config::{Config, OIDCProvider};
 use gitlab::GitLabProjectAccessTokenProvider;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretRequestType, SecretResult};
@@ -11,6 +11,7 @@ use tracing::info;
 mod auth;
 mod gitlab;
 
+pub(crate) mod config;
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
 pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
@@ -20,10 +21,6 @@ pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
         CONFIG.beam_url.clone(),
     )
 });
-
-pub fn get_beamclient() -> Client {
-    Client::new()
-}
 
 pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
 pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitLabProjectAccessTokenProvider>> =
@@ -152,11 +149,4 @@ pub async fn is_valid(
                 .await
         }
     }
-}
-
-async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Expect shutdown signal handler");
-    info!("Shutdown recieved");
 }

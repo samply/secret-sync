@@ -3,25 +3,21 @@ mod group;
 mod provider;
 mod test;
 
+use crate::auth::generate_secret;
 use std::{collections::HashMap, sync::Mutex};
 
-use crate::get_beamclient;
+use crate::CLIENT;
 use anyhow::bail;
-use app::{app_configs_match, check_app_result, compare_app_provider, get_application};
+use app::{check_app_result, compare_app_provider, get_application};
 use beam_lib::reqwest::{self, Url};
-use clap::{builder::Str, Parser};
+use clap::Parser;
 use group::create_groups;
-use provider::{
-    compare_provider, generate_provider_values, get_provider, get_provider_id,
-    provider_configs_match,
-};
-use reqwest::{Client, StatusCode};
+use provider::{compare_provider, generate_provider_values, get_provider, get_provider_id};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
-use tracing::{debug, field::debug, info};
-
-use super::config::FlowPropertymapping;
+use tracing::{debug, info};
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -36,7 +32,12 @@ pub struct AuthentikConfig {
     pub authentik_groups_per_bh: Vec<String>,
 }
 
-// ctruct is in config
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FlowPropertymapping {
+    pub authorization_flow: String,
+    pub invalidation_flow: String,
+    pub property_mapping: HashMap<String, String>,
+}
 impl FlowPropertymapping {
     async fn new(conf: &AuthentikConfig, token: &str) -> reqwest::Result<Self> {
         static PROPERTY_MAPPING_CACHE: Mutex<Option<FlowPropertymapping>> = Mutex::new(None);
@@ -79,10 +80,10 @@ impl FlowPropertymapping {
         .unwrap();
 
         let property_mapping = get_property_mappings_uuids(&query_url, token, property_keys).await;
-        let authorization_flow = get_uuid(&flow_url, token, flow_auth, &get_beamclient())
+        let authorization_flow = get_uuid(&flow_url, token, flow_auth)
             .await
             .expect("No default flow present"); // flow uuid
-        let invalidation_flow = get_uuid(&flow_url, token, flow_invalidation, &get_beamclient())
+        let invalidation_flow = get_uuid(&flow_url, token, flow_invalidation)
             .await
             .expect("No default flow present"); // flow uuid
 
@@ -101,10 +102,9 @@ pub async fn validate_application(
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> anyhow::Result<bool> {
     let token = get_access_token(conf).await?;
-    compare_app_provider(&token, name, oidc_client_config, secret, conf, client).await
+    compare_app_provider(&token, name, oidc_client_config, secret, conf).await
 }
 
 pub async fn create_app_provider(
@@ -113,7 +113,7 @@ pub async fn create_app_provider(
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
     let token = get_access_token(conf).await?;
-    combine_app_provider(&token, name, &oidc_client_config, conf, &get_beamclient()).await
+    combine_app_provider(&token, name, &oidc_client_config, conf).await
 }
 
 pub async fn combine_app_provider(
@@ -121,24 +121,32 @@ pub async fn combine_app_provider(
     name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    client: &Client,
 ) -> anyhow::Result<SecretResult> {
+    let client_id = format!(
+        "{name}-{}",
+        if oidc_client_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
+    );
+
     let secret = if !oidc_client_config.is_public {
         generate_secret()
     } else {
         String::with_capacity(0)
     };
     let generated_provider =
-        generate_provider_values(name, oidc_client_config, &secret, conf, token).await?;
+        generate_provider_values(&client_id, oidc_client_config, &secret, conf, token).await?;
     debug!("Provider Values: {:#?}", generated_provider);
-    let provider_res = client
+    let provider_res = CLIENT
         .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
         .bearer_auth(token)
         .json(&generated_provider)
         .send()
         .await?;
     // Create groups for this client
-    create_groups(name, token, conf, client).await?;
+    create_groups(name, token, conf).await?;
     debug!("Result Provider: {:#?}", provider_res);
     match provider_res.status() {
         StatusCode::CREATED => {
@@ -147,36 +155,34 @@ pub async fn combine_app_provider(
             let provider_name = res_provider.get("name").and_then(|v| v.as_str()).unwrap();
             debug!("{:?}", provider_pk);
             info!("Provider for {provider_name} created.");
-            if check_app_result(token, name, provider_pk, oidc_client_config, conf, client).await? {
+            if check_app_result(token, &client_id, provider_pk, conf).await? {
                 Ok(SecretResult::Created(secret))
             } else {
                 bail!(
                     "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                    get_application(name, token, oidc_client_config, conf, client).await?
+                    get_application(&client_id, token, conf).await?
                 );
             }
         }
         StatusCode::BAD_REQUEST => {
             let conflicting_provider =
-                get_provider(name, token, oidc_client_config, conf, client).await?;
+                get_provider(&client_id, token, oidc_client_config, conf).await?;
             debug!("{:#?}", conflicting_provider);
 
             let app = conflicting_provider
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap();
-            if compare_provider(token, name, oidc_client_config, conf, &secret, client).await? {
+            if compare_provider(token, &client_id, oidc_client_config, conf, &secret).await? {
                 info!("Provider {app} existed.");
                 if check_app_result(
                     token,
-                    name,
+                    &client_id,
                     conflicting_provider
                         .get("pk")
                         .and_then(|v| v.as_i64())
-                        .unwrap(),
-                    oidc_client_config,
+                        .expect("pk id not found"),
                     conf,
-                    client,
                 )
                 .await?
                 {
@@ -191,14 +197,14 @@ pub async fn combine_app_provider(
                 } else {
                     bail!(
                         "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                        get_application(name, token, oidc_client_config, conf, client).await?
+                        get_application(&client_id, token, conf).await?
                     );
                 }
             } else {
-                let res = client
+                let res = CLIENT
                     .patch(conf.authentik_url.join(&format!(
                             "api/v3/providers/oauth2/{}/",
-                            get_provider_id(name, token, oidc_client_config, conf, client)
+                            get_provider_id(&client_id, token, oidc_client_config, conf)
                                 .await
                                 .unwrap()
                         ))?)
@@ -213,14 +219,12 @@ pub async fn combine_app_provider(
                 info!("Provider {app} updated");
                 if check_app_result(
                     token,
-                    name,
+                    &client_id,
                     conflicting_provider
                         .get("pk")
                         .and_then(|v| v.as_i64())
                         .unwrap(),
-                    oidc_client_config,
                     conf,
-                    client,
                 )
                 .await?
                 {
@@ -228,7 +232,7 @@ pub async fn combine_app_provider(
                 } else {
                     bail!(
                         "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                        get_application(name, token, oidc_client_config, conf, client).await?
+                        get_application(&client_id, token, conf).await?
                     );
                 }
             }
@@ -239,13 +243,8 @@ pub async fn combine_app_provider(
     }
 }
 
-async fn get_uuid(
-    target_url: &Url,
-    token: &str,
-    search_key: &str,
-    client: &Client,
-) -> Option<String> {
-    let target_value: serde_json::Value = client
+async fn get_uuid(target_url: &Url, token: &str, search_key: &str) -> Option<String> {
+    let target_value: serde_json::Value = CLIENT
         .get(target_url.to_owned())
         .query(&[("search", search_key)])
         .bearer_auth(token)
@@ -273,11 +272,12 @@ async fn get_property_mappings_uuids(
     token: &str,
     search_key: Vec<&str>,
 ) -> HashMap<String, String> {
+    // TODO: async iter to collect
     let mut result: HashMap<String, String> = HashMap::new();
     for key in search_key {
         result.insert(
             key.to_string(),
-            get_uuid(target_url, token, key, &get_beamclient())
+            get_uuid(target_url, token, key)
                 .await
                 .expect(&format!("Property: {:?}", key)),
         );
@@ -285,28 +285,12 @@ async fn get_property_mappings_uuids(
     result
 }
 
-fn generate_secret() -> String {
-    use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                            abcdefghijklmnopqrstuvwxyz\
-                            0123456789";
-    const PASSWORD_LEN: usize = 30;
-    let mut rng = rand::thread_rng();
-
-    (0..PASSWORD_LEN)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect()
-}
-
 async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
     #[derive(Deserialize, Serialize, Debug)]
     struct Token {
         access_token: String,
     }
-    get_beamclient()
+    CLIENT
         .post(
             conf.authentik_url
                 .join("application/o/token/")

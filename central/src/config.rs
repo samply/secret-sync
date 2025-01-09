@@ -1,16 +1,13 @@
-use std::{collections::HashMap, convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, net::SocketAddr};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 use shared::{OIDCConfig, SecretResult};
 
-use crate::{
-    auth::keycloak::{self, KeyCloakConfig},
-    get_beamclient,
+use crate::auth::{
+    authentik::{self, AuthentikConfig},
+    keycloak::{self, KeyCloakConfig},
 };
-
-use super::authentik::{self, AuthentikConfig};
 
 /// Central secret sync
 #[derive(Debug, Parser)]
@@ -84,25 +81,14 @@ impl OIDCProvider {
                         "Failed to validate client. See upstrean logs.".into()
                     })
             }
-            OIDCProvider::Authentik(conf) => authentik::validate_application(
-                name,
-                oidc_client_config,
-                secret,
-                conf,
-                &get_beamclient(),
-            )
-            .await
-            .map_err(|e| {
-                eprintln!("Failed to validate client {name}: {e}");
-                "Failed to validate client. See upstrean logs.".into()
-            }),
+            OIDCProvider::Authentik(conf) => {
+                authentik::validate_application(name, oidc_client_config, secret, conf)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Failed to validate client {name}: {e}");
+                        "Failed to validate client. See upstrean logs.".into()
+                    })
+            }
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct FlowPropertymapping {
-    pub authorization_flow: String,
-    pub invalidation_flow: String,
-    pub property_mapping: HashMap<String, String>,
 }

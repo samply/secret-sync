@@ -6,7 +6,7 @@ use anyhow::bail;
 use beam_lib::reqwest::{self, StatusCode, Url};
 use clap::Parser;
 use client::{compare_clients, post_client};
-use serde_json::{json, Value};
+use serde_json::json;
 use shared::{OIDCConfig, SecretResult};
 
 #[derive(Debug, Parser, Clone)]
@@ -106,22 +106,6 @@ async fn post_group(name: &str, token: &str, conf: &KeyCloakConfig) -> anyhow::R
         s => bail!("Unexpected statuscode {s} while creating group {name}"),
     }
     Ok(())
-}
-
-fn generate_secret() -> String {
-    use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                            abcdefghijklmnopqrstuvwxyz\
-                            0123456789";
-    const PASSWORD_LEN: usize = 30;
-    let mut rng = rand::thread_rng();
-
-    (0..PASSWORD_LEN)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect()
 }
 
 async fn add_service_account_roles(

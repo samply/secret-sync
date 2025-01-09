@@ -54,8 +54,9 @@ services:
       POSTGRES_PASSWORD: ${PG_PASS:?database password required}
       POSTGRES_USER: ${PG_USER:-authentik}
       POSTGRES_DB: ${PG_DB:-authentik}
-    env_file:
-      - .env
+      PG_PASS: admin
+      AUTHENTIK_SECRET_KEY: admin
+      AUTHENTIK_LOG_LEVEL: trace
   redis:
     image: docker.io/library/redis:alpine
     command: --save 60 1 --loglevel warning
@@ -78,11 +79,12 @@ services:
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      PG_PASS: admin
+      AUTHENTIK_SECRET_KEY: admin
+      AUTHENTIK_LOG_LEVEL: trace
     volumes:
       - ./media:/media
       - ./custom-templates:/templates
-    env_file:
-      - .env
     ports:
       - "${COMPOSE_PORT_HTTP:-9000}:9000"
       - "${COMPOSE_PORT_HTTPS:-9443}:9443"
@@ -99,6 +101,9 @@ services:
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      PG_PASS: admin
+      AUTHENTIK_SECRET_KEY: admin
+      AUTHENTIK_LOG_LEVEL: trace
     # `user: root` and the docker socket volume are optional.
     # See more for the docker socket integration here:
     # https://goauthentik.io/docs/outposts/integrations/docker

@@ -1,16 +1,12 @@
-use beam_lib::reqwest::{self, StatusCode};
-use reqwest::Client;
+use beam_lib::reqwest::StatusCode;
 use serde_json::json;
 use tracing::info;
 
+use crate::CLIENT;
+
 use super::AuthentikConfig;
 
-pub async fn create_groups(
-    name: &str,
-    token: &str,
-    conf: &AuthentikConfig,
-    client: &Client,
-) -> anyhow::Result<()> {
+pub async fn create_groups(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
     let capitalize = |s: &str| {
         let mut chrs = s.chars();
         chrs.next()
@@ -21,18 +17,13 @@ pub async fn create_groups(
     };
     let name = capitalize(name);
     for group in &conf.authentik_groups_per_bh {
-        post_group(&group.replace('#', &name), token, conf, client).await?;
+        post_group(&group.replace('#', &name), token, conf).await?;
     }
     Ok(())
 }
 
-pub async fn post_group(
-    name: &str,
-    token: &str,
-    conf: &AuthentikConfig,
-    client: &Client,
-) -> anyhow::Result<()> {
-    let res = client
+pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
+    let res = CLIENT
         .post(conf.authentik_url.join("api/v3/core/groups/")?)
         .bearer_auth(token)
         .json(&json!({
