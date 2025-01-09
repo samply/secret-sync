@@ -120,14 +120,14 @@ pub async fn compare_app_provider(
         }
     );
 
-    let provider_pk = get_provider_id(&client_id, token, oidc_client_config, conf).await;
+    let provider_pk = get_provider_id(&client_id, token, conf).await;
     match provider_pk {
         Some(pr_id) => {
             let app_res = get_application(&client_id, token, conf).await?;
             if app_configs_match(&app_res, &generate_app_values(pr_id, &client_id)) {
-                return compare_provider(token, &client_id, oidc_client_config, conf, secret).await;
+                compare_provider(token, &client_id, oidc_client_config, conf, secret).await
             } else {
-                return Ok(false);
+                Ok(false)
             }
         }
         None => Ok(false),

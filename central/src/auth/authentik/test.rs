@@ -257,9 +257,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
         ],
     };
-    let pk_id = get_provider_id(name, &token, &client_config, &conf)
-        .await
-        .unwrap();
+    let pk_id = get_provider_id(name, &token, &conf).await.unwrap();
     let generated_provider =
         generate_provider_values(name, &client_config, "", &conf, &token).await?;
     debug!("{:#?}", generated_provider);

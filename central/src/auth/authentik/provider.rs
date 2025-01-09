@@ -65,12 +65,7 @@ pub async fn generate_provider_values(
     Ok(json)
 }
 
-pub async fn get_provider_id(
-    client_id: &str,
-    token: &str,
-    oidc_client_config: &OIDCConfig,
-    conf: &AuthentikConfig,
-) -> Option<i64> {
+pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfig) -> Option<i64> {
     //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
     let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
     let query_url = Url::parse_with_params(
@@ -107,17 +102,15 @@ pub async fn get_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<Value> {
-    let res = get_provider_id(client_id, token, oidc_client_config, conf).await;
+    let res = get_provider_id(client_id, token, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
         .authentik_url
         .join(&format!("api/v3/providers/oauth2/{pk}/"))
         .context("Error parsing provider")?;
-    // TODO: remove debug
-    let cli = CLIENT.get(base_url);
-    debug!("cli {:?}", cli);
-
-    cli.bearer_auth(token)
+    CLIENT
+        .get(base_url)
+        .bearer_auth(token)
         .send()
         .await
         .context("No Response")?

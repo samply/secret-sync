@@ -203,11 +203,9 @@ pub async fn combine_app_provider(
             } else {
                 let res = CLIENT
                     .patch(conf.authentik_url.join(&format!(
-                            "api/v3/providers/oauth2/{}/",
-                            get_provider_id(&client_id, token, oidc_client_config, conf)
-                                .await
-                                .unwrap()
-                        ))?)
+                        "api/v3/providers/oauth2/{}/",
+                        get_provider_id(&client_id, token, conf).await.unwrap()
+                    ))?)
                     .bearer_auth(token)
                     .json(&generated_provider)
                     .send()
