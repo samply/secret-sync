@@ -9,6 +9,9 @@ struct GitLabApiConfig {
     /// The base URL for API calls, e.g. "https://gitlab.com/"
     #[clap(long, env)]
     pub gitlab_url: Url,
+    /// Format of the repository name on GitLab. Must contain a "#" which is replaced with the site name. Example: "bridgehead-configurations/bridgehead-config-#"
+    #[clap(long, env)]
+    pub gitlab_repo_format: String,
     /// A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
     #[clap(long, env)]
     pub gitlab_api_access_token: String,
@@ -22,28 +25,6 @@ struct GitLabApiReponseBody {
 pub struct GitLabProjectAccessTokenProvider {
     config: GitLabApiConfig,
     client: reqwest::Client,
-}
-
-/// Derive the bridgehead configuration repository from the beam id of the requester.
-/// Example return value: "bridgehead-configurations/bridgehead-config-berlin"
-fn derive_bridgehead_config_repo_from_beam_id(requester: &AppId) -> Result<String, String> {
-    let mut parts = requester.as_ref().splitn(3, '.');
-    let (_app, proxy, broker) = (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap());
-
-    let group = match broker {
-        "broker.ccp-it.dktk.dkfz.de" => "bridgehead-configurations", // ccp
-        "broker.bbmri.sample.de" => "bbmri-bridgehead-configs", // bbmri
-        "broker.bbmri.de" => "bbmri-bridgehead-configs", // gbn
-        "test-no-real-data.broker.samply.de" => "bridgehead-configurations", // cce, itcc, kr
-        "broker.hector.dkfz.de" => "dhki", // dhki
-        _ => return Err(format!("Bridgehead configuration repository group not known for broker {broker}")),
-    };
-
-    Ok(match group {
-        "bridgehead-configurations" => format!("{group}/bridgehead-config-{proxy}"),
-        "dhki" => format!("{group}/{proxy}-bk"),
-        _ => format!("{group}/{proxy}"),
-    })
 }
 
 impl GitLabProjectAccessTokenProvider {
@@ -65,7 +46,8 @@ impl GitLabProjectAccessTokenProvider {
         &self,
         requester: &AppId,
     ) -> Result<SecretResult, String> {
-        let project_path = derive_bridgehead_config_repo_from_beam_id(requester)?;
+        let name = requester.as_ref().split('.').nth(1).unwrap();
+        let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
 
         // Expire in 1 week
         let expires_at = (chrono::Local::now() + chrono::TimeDelta::weeks(1))
@@ -79,7 +61,7 @@ impl GitLabProjectAccessTokenProvider {
                     .gitlab_url
                     .join(&format!(
                         "api/v4/projects/{}/access_tokens",
-                        urlencoding::encode(&project_path)
+                        urlencoding::encode(&gitlab_repo)
                     ))
                     .map_err(|e| e.to_string())?,
             )
@@ -115,7 +97,8 @@ impl GitLabProjectAccessTokenProvider {
         requester: &AppId,
         secret: &str,
     ) -> Result<bool, String> {
-        let project_path = derive_bridgehead_config_repo_from_beam_id(requester)?;
+        let name = requester.as_ref().split('.').nth(1).unwrap();
+        let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
 
         let response = self
             .client
@@ -124,7 +107,7 @@ impl GitLabProjectAccessTokenProvider {
                     .gitlab_url
                     .join(&format!(
                         "{}.git/info/refs?service=git-upload-pack",
-                        project_path
+                        gitlab_repo
                     ))
                     .map_err(|e| e.to_string())?,
             )

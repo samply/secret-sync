@@ -65,6 +65,8 @@ services:
       # Optional GitLab parameters
       # The base URL for API calls, e.g. "https://gitlab.com/"
       - GITLAB_URL=
+      # Format of the repository name on GitLab. Must contain a "#" which is replaced with the site name. Example: "bridgehead-configurations/bridgehead-config-#"
+      - GITLAB_REPO_FORMAT=
       # A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
       - GITLAB_API_ACCESS_TOKEN=
 ```
@@ -88,6 +90,6 @@ Create a GitLab project access token for read access (git clone/pull) to the bri
 
 Secret type: `GitLabProjectAccessToken`
 
-The argument is always `bridgehead-configuration`.
+The third value after the final `:` is unused.
 
-Example: `GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:bridgehead-configuration`
+Example: `GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:`
