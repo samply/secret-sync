@@ -69,10 +69,7 @@ impl FromStr for SecretArg {
                 }))
             }
             "GitLabProjectAccessToken" => {
-                match args {
-                    "bridgehead-configuration" => Ok(SecretRequest::GitLabProjectAccessToken),
-                    _ => return Err(format!("Invalid GitLabProjectAccessToken parameter '{args}'")),
-                }
+                Ok(SecretRequest::GitLabProjectAccessToken)
             }
             _ => Err(format!("Unknown secret type {secret_type}")),
         }?;
