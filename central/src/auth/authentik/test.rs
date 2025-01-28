@@ -24,9 +24,7 @@ pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .try_init();
-    //let token = "";
-    // export AUTHENTIK_TOKEN=
-    let token = std::env::var("AUTHENTIK_TOKEN").expect("Missing ENV Authentik_Token");
+    let token = "".to_owned();
     Ok((
         token,
         AuthentikConfig {
@@ -63,31 +61,6 @@ async fn get_access_test() {
         .expect("Token can not be parseed");
     dbg!(&t);
     assert!(!t.access_token.is_empty());
-}
-
-#[cfg(test)]
-// nicht möglich mit authentik
-async fn get_access_token_via_admin_login() -> reqwest::Result<String> {
-    CLIENT
-        .post(&format!(
-            "{}/application/o/token/",
-            if cfg!(test) {
-                "http://localhost:9000"
-            } else {
-                "http://authentik:8080"
-            }
-        ))
-        .form(&json!({
-            "client_id": "",
-            "username": "",
-            "password": "",
-            "grant_type": ""
-        }))
-        .send()
-        .await?
-        .json::<Token>()
-        .await
-        .map(|t| t.access_token)
 }
 
 //#[ignore = "Requires setting up a authentik"]

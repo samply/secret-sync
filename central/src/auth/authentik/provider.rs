@@ -32,13 +32,13 @@ pub async fn generate_provider_values(
         "authorization_flow": mapping.authorization_flow,
         "invalidation_flow": mapping.invalidation_flow,
         "property_mappings": [
-            mapping.property_mapping.get("web-origins"),
-            mapping.property_mapping.get("acr"),
-            mapping.property_mapping.get("profile"),
-            mapping.property_mapping.get("roles"),
-            mapping.property_mapping.get("email"),
-            mapping.property_mapping.get("microprofile-jwt"),
-            mapping.property_mapping.get("groups")
+            mapping.property_mapping["web-origins"],
+            mapping.property_mapping["acr"],
+            mapping.property_mapping["profile"],
+            mapping.property_mapping["roles"],
+            mapping.property_mapping["email"],
+            mapping.property_mapping["microprofile-jwt"],
+            mapping.property_mapping["groups"]
         ]
     });
 
@@ -86,14 +86,7 @@ pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfi
         .ok()?;
     debug!("Value search key {client_id}: {:?}", &target_value);
     // pk is the uuid for this result
-    target_value
-        .as_object()
-        .and_then(|o| o.get("results"))
-        .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|o| o.as_object())
-        .and_then(|o| o.get("pk"))
-        .and_then(|v| v.as_i64())
+    Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
 pub async fn get_provider(
@@ -146,8 +139,8 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
     };
 
     let redirct_url_match = || {
-        let a_uris = a.get("redirect_uris").and_then(Value::as_array);
-        let b_uris = b.get("redirect_uris").and_then(Value::as_array);
+        let a_uris = a["redirect_uris"].as_array();
+        let b_uris = b["redirect_uris"].as_array();
         match (a_uris, b_uris) {
             (Some(a_uris), Some(b_uris)) => {
                 a_uris.iter().all(|auri| b_uris.contains(auri))
@@ -157,10 +150,10 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             _ => false,
         }
     };
-    a.get("name") == b.get("name")
-        && a.get("client_secret") == b.get("client_secret")
-        && a.get("authorization_flow") == b.get("authorization_flow")
-        && a.get("invalidation_flow") == b.get("invalidation_flow")
+    a["name"] == b["name"]
+        && a["client_secret"] == b["client_secret"]
+        && a["authorization_flow"] == b["authorization_flow"]
+        && a["invalidation_flow"] == b["invalidation_flow"]
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
         && redirct_url_match()
 }

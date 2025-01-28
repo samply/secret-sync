@@ -135,7 +135,5 @@ pub async fn compare_app_provider(
 }
 
 pub fn app_configs_match(a: &Value, b: &Value) -> bool {
-    a.get("name") == b.get("name")
-        && a.get("group") == b.get("group")
-        && a.get("provider") == b.get("provider")
+    a.get("name") == b.get("name") && a["group"] == b["group"] && a["provider"] == b["provider"]
 }

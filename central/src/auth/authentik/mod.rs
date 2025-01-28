@@ -218,10 +218,9 @@ pub async fn combine_app_provider(
                 if check_app_result(
                     token,
                     &client_id,
-                    conflicting_provider
-                        .get("pk")
-                        .and_then(|v| v.as_i64())
-                        .unwrap(),
+                    conflicting_provider["pk"]
+                        .as_i64()
+                        .expect("app id - pk must be present"),
                     conf,
                 )
                 .await?
@@ -254,15 +253,7 @@ async fn get_uuid(target_url: &Url, token: &str, search_key: &str) -> Option<Str
         .ok()?;
     debug!("Value search key {search_key}: {:?}", &target_value);
     // pk is the uuid for this result
-    target_value
-        .as_object()
-        .and_then(|o| o.get("results"))
-        .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|o| o.as_object())
-        .and_then(|o| o.get("pk"))
-        .and_then(Value::as_str)
-        .map(|s| s.to_string())
+    Some(target_value["results"][0]["pk"].as_str()?.to_owned())
 }
 
 async fn get_property_mappings_uuids(
