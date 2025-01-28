@@ -12,10 +12,6 @@ use crate::auth::{
 /// Central secret sync
 #[derive(Debug, Parser)]
 pub struct Config {
-    /// Address the server should bind to
-    #[clap(env, long, default_value = "0.0.0.0:8080")]
-    pub bind_addr: SocketAddr,
-
     /// Url of the local beam proxy which is required to have sockets enabled
     #[clap(env, long, default_value = "http://beam-proxy:8081")]
     pub beam_url: Url,
