@@ -71,13 +71,15 @@ async fn main() -> ExitCode {
                         println!("{name} has been created.");
                         secret
                     });
-            },
+            }
             Ok(SecretResult::AlreadyExisted(secret)) => {
-                cache.entry(name.to_string())
+                cache
+                    .entry(name.to_string())
                     .and_modify(|v| {
                         println!("{name} was cached but needed to be updated.");
                         *v = secret.clone()
-                    }).or_insert_with(|| {
+                    })
+                    .or_insert_with(|| {
                         println!("{name} already existed but was not cached.");
                         secret
                     });
@@ -151,15 +153,20 @@ async fn send_secret_request(
 
     futures::future::try_join_all(tasks.into_iter().map(|t| async move {
         BEAM_CLIENT.post_task(&t).await?;
-        BEAM_CLIENT.poll_results::<Vec<Result<SecretResult, String>>>(&t.id, &BlockingOptions::from_count(1))
+        BEAM_CLIENT
+            .poll_results::<Vec<Result<SecretResult, String>>>(
+                &t.id,
+                &BlockingOptions::from_count(1),
+            )
             .await?
             .pop()
             .map(|res| res.body)
             .ok_or(BeamError::Other(
                 "Got no result from secret provider".into(),
             ))
-        })
-    ).map_ok(|v| v.into_iter().flatten().collect()).await
+    }))
+    .map_ok(|v| v.into_iter().flatten().collect())
+    .await
 }
 
 async fn wait_for_beam_proxy() -> beam_lib::Result<()> {
