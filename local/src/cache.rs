@@ -25,13 +25,22 @@ impl Cache {
         Self(
             file.split('\n')
                 .flat_map(|l| l.split_once('='))
-                .map(|(k, v)| (k.to_string(), v.trim_start_matches('"').trim_end_matches('"').to_string()))
+                .map(|(k, v)| {
+                    (
+                        k.to_string(),
+                        v.trim_start_matches('"').trim_end_matches('"').to_string(),
+                    )
+                })
                 .collect(),
         )
     }
 
     pub fn write(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        let data: Vec<_> = self.0.iter().map(|(k, v)| format!(r#"{k}="{v}""#)).collect();
+        let data: Vec<_> = self
+            .0
+            .iter()
+            .map(|(k, v)| format!(r#"{k}="{v}""#))
+            .collect();
         fs::write(path, data.join("\n"))
     }
 }
