@@ -63,7 +63,7 @@ async fn get_access_test() {
     assert!(!t.access_token.is_empty());
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let (token, conf) = setup_authentik()?;
