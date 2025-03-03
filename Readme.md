@@ -1,4 +1,3 @@
-
 # Bridgehead Secret Sync
 
 ## Usage
@@ -35,6 +34,7 @@ services:
 ```
 
 #### Secret Definitions
+
 `SECRET_DEFINITIONS` should be `\x1E` (Ascii record separator) delimited list of secret definitions.
 A secret definition is a `:` separated 3-tuple. The first value is the [secret type](#secret-types) which defines how the secret is generated. The second argument is the secrets name which will be the name written to the secrets cache file. The third value is the data used to generate the secret which depends on the [secret type](#secret-types) used.
 
@@ -62,6 +62,13 @@ services:
       # Extra service account roles for the private client
       - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users,query-groups
 
+      # Optional authentik parameters
+      - AUTHENTIK_URL=http://authentik:9000
+      # Client id of the authentik apps and providers which has to have permissions to create apps and providers
+      - AUTHENTIK_ID=my_authentik_admin
+      # The client secret for the client
+      - AUTHENTIK_SECRET=my_secret
+
       # Optional GitLab parameters
       # The base URL for API calls, e.g. "https://gitlab.com/"
       - GITLAB_URL=
@@ -74,12 +81,14 @@ services:
 ## Secret types
 
 ### OIDC
+
 Register an Open ID Connect client at the central half of this component.
 
 Secret type: `OIDC`  
-Each argument is separated by a semicolon. The arguments are: 
+Each argument is separated by a semicolon. The arguments are:
+
 - The type of OIDC client which gets created. Either `public` or `private`
-- A comma separated list of urls permitted for redirection  
+- A comma separated list of urls permitted for redirection
 
 Example:
 `OIDC:MY_OIDC_CLIENT_SECRET:public;https://foo.com,https://bar.com`

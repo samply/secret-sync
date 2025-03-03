@@ -44,7 +44,7 @@ impl FlowPropertymapping {
         if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
             return Ok(flow.clone());
         }
-        let flow_auth = "authorization_flow";
+        let flow_auth = "default-authorization-flow";
         let flow_invalidation = "default-provider-invalidation-flow";
         let property_keys = vec![
             "web-origins",
