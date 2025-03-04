@@ -107,7 +107,7 @@ async fn send_secret_request(
     for secret_request in secret_requests {
         match secret_request.deref() {
             SecretRequest::OpenIdConnect(_) => oidc_requests.push(secret_request),
-            SecretRequest::GitLabProjectAccessToken => {
+            SecretRequest::GitLabProjectAccessToken(_) => {
                 gitlab_project_access_token_requests.push(secret_request)
             }
         }
