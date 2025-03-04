@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
 use icinga_client::{IcingaProcessResult, IcingaServiceState, IcingaState};
@@ -8,16 +10,12 @@ use tracing::warn;
 
 use crate::{CONFIG, ICINGA_CLIENT};
 
-#[derive(Parser)]
-struct GitLabApiConfig {
+struct GitLabServerConfig {
     /// The base URL for API calls, e.g. "https://gitlab.com/"
-    #[clap(long, env)]
     pub gitlab_url: Url,
     /// Format of the repository name on GitLab. Must contain a "#" which is replaced with the site name. Example: "bridgehead-configurations/bridgehead-config-#"
-    #[clap(long, env)]
     pub gitlab_repo_format: String,
     /// A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
-    #[clap(long, env)]
     pub gitlab_api_access_token: String,
 }
 
@@ -27,28 +25,64 @@ struct GitLabApiReponseBody {
 }
 
 pub struct GitLabProjectAccessTokenProvider {
-    config: GitLabApiConfig,
+    configs: HashMap<String, GitLabServerConfig>,
     client: reqwest::Client,
+}
+
+fn parse_env_vars() -> HashMap<String, GitLabServerConfig> {
+    let mut configs = HashMap::new();
+    let env_vars: HashMap<String, String> = std::env::vars().collect();
+    for (name, value) in &env_vars {
+        if let Some(prefix) = name.strip_suffix("_GITLAB_URL") {
+            let gitlab_url = match Url::parse(value) {
+                Ok(gitlab_url) => gitlab_url,
+                Err(parse_error) => {
+                    eprintln!("Failed to parse URL in environment variable {prefix}_GITLAB_URL: {parse_error}");
+                    continue;
+                }
+            };
+            let Some(gitlab_repo_format) = env_vars.get(&format!("{prefix}_GITLAB_REPO_FORMAT")).cloned() else {
+                eprintln!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_REPO_FORMAT is also required but it is missing");
+                continue;
+            };
+            let Some(gitlab_api_access_token) = env_vars.get(&format!("{prefix}_GITLAB_API_ACCESS_TOKEN")).cloned() else {
+                eprintln!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_API_ACCESS_TOKEN is also required but it is missing");
+                continue;
+            };
+            configs.insert(prefix.to_string(), GitLabServerConfig {
+                gitlab_url,
+                gitlab_repo_format,
+                gitlab_api_access_token,
+            });
+        }
+    }
+    return configs;
 }
 
 impl GitLabProjectAccessTokenProvider {
     pub fn try_init() -> Option<Self> {
-        match GitLabApiConfig::try_parse() {
-            Ok(config) => Some(Self {
-                config,
+        let configs = parse_env_vars();
+        if configs.is_empty() {
+            None
+        } else {
+            Some(Self {
+                configs: configs,
                 client: reqwest::Client::new(),
-            }),
-            Err(e) => {
-                println!("{e}");
-                None
-            }
+            })
         }
     }
 
     /// Create a project access token using the GitLab API
-    pub async fn create_token(&self, requester: &AppId) -> Result<SecretResult, String> {
+    pub async fn create_token(
+        &self,
+        requester: &AppId,
+        prefix: &str,
+    ) -> Result<SecretResult, String> {
+        let Some(config) = self.configs.get(prefix) else {
+            return Err(format!("A secret sync client requested a project access token for the GitLab ID {prefix} but it is not configured"));
+        };
         let name = requester.as_ref().split('.').nth(1).unwrap();
-        let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
+        let gitlab_repo = config.gitlab_repo_format.replace('#', name);
 
         // Expire in 1 week
         let expires_at = (chrono::Local::now() + chrono::TimeDelta::weeks(1))
@@ -58,7 +92,7 @@ impl GitLabProjectAccessTokenProvider {
         let response = self
             .client
             .post(
-                self.config
+                config
                     .gitlab_url
                     .join(&format!(
                         "api/v4/projects/{}/access_tokens",
@@ -66,7 +100,7 @@ impl GitLabProjectAccessTokenProvider {
                     ))
                     .map_err(|e| e.to_string())?,
             )
-            .header("PRIVATE-TOKEN", &self.config.gitlab_api_access_token)
+            .header("PRIVATE-TOKEN", &config.gitlab_api_access_token)
             .json(&json!({
                 "name": requester,
                 // The "read_repository" scope is required for git clone/pull permissions
@@ -108,14 +142,22 @@ impl GitLabProjectAccessTokenProvider {
     }
 
     /// Simulate a git fetch to check the validity of the token
-    pub async fn validate_token(&self, requester: &AppId, secret: &str) -> Result<bool, String> {
+    pub async fn validate_token(
+        &self,
+        requester: &AppId,
+        prefix: &str,
+        secret: &str,
+    ) -> Result<bool, String> {
+        let Some(config) = self.configs.get(prefix) else {
+            return Err(format!("A secret sync client requested a project access token for the GitLab ID {prefix} but it is not configured"));
+        };
         let name = requester.as_ref().split('.').nth(1).unwrap();
-        let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
+        let gitlab_repo = config.gitlab_repo_format.replace('#', name);
 
         let response = self
             .client
             .get(
-                self.config
+                config
                     .gitlab_url
                     .join(&format!(
                         "{}.git/info/refs?service=git-upload-pack",
@@ -123,7 +165,7 @@ impl GitLabProjectAccessTokenProvider {
                     ))
                     .map_err(|e| e.to_string())?,
             )
-            .basic_auth("placeholder-for-samply-secret-sync", Some(secret))
+            .basic_auth("secret-sync", Some(secret)) // Any non-empty username works, only the secret matters
             .send()
             .await
             .map_err(|e| e.to_string())?;
