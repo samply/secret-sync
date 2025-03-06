@@ -120,7 +120,7 @@ pub async fn create_secret(
                 return Err("No GitLab project access token provider configured!".into());
             };
             gitlab_project_access_token_provider
-                .create_token(requester, &client_config.prefix)
+                .create_token(requester, &client_config.provider)
                 .await
         }
     }
@@ -148,7 +148,7 @@ pub async fn is_valid(
                 return Err("No GitLab project access token provider configured!".into());
             };
             gitlab_project_access_token_provider
-                .validate_token(requester, &client_config.prefix, secret)
+                .validate_token(requester, &client_config.provider, secret)
                 .await
         }
     }

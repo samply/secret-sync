@@ -76,10 +76,10 @@ impl GitLabProjectAccessTokenProvider {
     pub async fn create_token(
         &self,
         requester: &AppId,
-        prefix: &str,
+        provider: &str,
     ) -> Result<SecretResult, String> {
-        let Some(config) = self.configs.get(prefix) else {
-            return Err(format!("A secret sync client requested a project access token for the GitLab ID {prefix} but it is not configured"));
+        let Some(config) = self.configs.get(provider) else {
+            return Err(format!("A secret sync client requested a project access token for the GitLab provider '{provider}' but it is not configured"));
         };
         let name = requester.as_ref().split('.').nth(1).unwrap();
         let gitlab_repo = config.gitlab_repo_format.replace('#', name);
@@ -145,11 +145,11 @@ impl GitLabProjectAccessTokenProvider {
     pub async fn validate_token(
         &self,
         requester: &AppId,
-        prefix: &str,
+        provider: &str,
         secret: &str,
     ) -> Result<bool, String> {
-        let Some(config) = self.configs.get(prefix) else {
-            return Err(format!("A secret sync client requested a project access token for the GitLab ID {prefix} but it is not configured"));
+        let Some(config) = self.configs.get(provider) else {
+            return Err(format!("A secret sync client requested a project access token for the GitLab provider '{provider}' but it is not configured"));
         };
         let name = requester.as_ref().split('.').nth(1).unwrap();
         let gitlab_repo = config.gitlab_repo_format.replace('#', name);
