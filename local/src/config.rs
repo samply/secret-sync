@@ -74,7 +74,7 @@ impl FromStr for SecretArg {
             }
             "GitLabProjectAccessToken" => Ok(SecretRequest::GitLabProjectAccessToken(
                 shared::GitLabClientConfig {
-                    prefix: args.to_string(),
+                    provider: args.to_string(),
                 },
             )),
             _ => Err(format!("Unknown secret type {secret_type}")),

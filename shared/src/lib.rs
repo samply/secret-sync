@@ -16,7 +16,7 @@ pub struct OIDCConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitLabClientConfig {
-    pub prefix: String,
+    pub provider: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
