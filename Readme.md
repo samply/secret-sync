@@ -69,13 +69,13 @@ services:
       # The client secret for the client
       - AUTHENTIK_SECRET=my_secret
 
-      # Optional GitLab parameters
-      # The base URL for API calls, e.g. "https://gitlab.com/"
-      - GITLAB_URL=
+      # Optional GitLab parameters. More than one GitLab server can be configured by using different prefixes like "verbis" in this example.
+      # The base URL for API calls, e.g. "https://gitlab.com/".
+      - verbis_GITLAB_URL=
       # Format of the repository name on GitLab. Must contain a "#" which is replaced with the site name. Example: "bridgehead-configurations/bridgehead-config-#"
-      - GITLAB_REPO_FORMAT=
+      - verbis_GITLAB_REPO_FORMAT=
       # A long-living personal (or impersonation) access token that is used to create short-living project access tokens. Requires at least the "api" scope. Note that group access tokens and project access tokens cannot be used to create project access tokens.
-      - GITLAB_API_ACCESS_TOKEN=
+      - verbis_GITLAB_API_ACCESS_TOKEN=
 ```
 
 ## Secret types
@@ -99,6 +99,6 @@ Create a GitLab project access token for read access (git clone/pull) to the bri
 
 Secret type: `GitLabProjectAccessToken`
 
-The third value after the final `:` is unused.
+The third value after the final `:` is the prefix that identifies the GitLab server like e.g. "verbis". The central secret sync component must be configured with environment variables with this prefix.
 
 Example: `GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:`

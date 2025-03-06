@@ -72,9 +72,11 @@ impl FromStr for SecretArg {
                     is_public,
                 }))
             }
-            "GitLabProjectAccessToken" => {
-                Ok(SecretRequest::GitLabProjectAccessToken)
-            }
+            "GitLabProjectAccessToken" => Ok(SecretRequest::GitLabProjectAccessToken(
+                shared::GitLabClientConfig {
+                    provider: args.to_string(),
+                },
+            )),
             _ => Err(format!("Unknown secret type {secret_type}")),
         }?;
 
