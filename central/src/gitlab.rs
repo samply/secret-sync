@@ -37,16 +37,16 @@ fn parse_env_vars() -> HashMap<String, GitLabServerConfig> {
             let gitlab_url = match Url::parse(value) {
                 Ok(gitlab_url) => gitlab_url,
                 Err(parse_error) => {
-                    eprintln!("Failed to parse URL in environment variable {prefix}_GITLAB_URL: {parse_error}");
+                    warn!("Failed to parse URL in environment variable {prefix}_GITLAB_URL: {parse_error}");
                     continue;
                 }
             };
             let Some(gitlab_repo_format) = env_vars.get(&format!("{prefix}_GITLAB_REPO_FORMAT")).cloned() else {
-                eprintln!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_REPO_FORMAT is also required but it is missing");
+                warn!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_REPO_FORMAT is also required but it is missing");
                 continue;
             };
             let Some(gitlab_api_access_token) = env_vars.get(&format!("{prefix}_GITLAB_API_ACCESS_TOKEN")).cloned() else {
-                eprintln!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_API_ACCESS_TOKEN is also required but it is missing");
+                warn!("Because the environment variable {prefix}_GITLAB_URL is present {prefix}_GITLAB_API_ACCESS_TOKEN is also required but it is missing");
                 continue;
             };
             configs.insert(prefix.to_string(), GitLabServerConfig {
