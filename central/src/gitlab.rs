@@ -168,7 +168,7 @@ pub async fn report_to_icinga(requester: &AppId, state: IcingaServiceState, mess
             plugin_output: message,
             filter: format!(
                 "host.address==\"{}\" && service.name==\"git-access-token-rotator\"",
-                CONFIG.beam_id
+                CONFIG.beam_id.proxy_id(),
             ),
             ..Default::default()
         })
