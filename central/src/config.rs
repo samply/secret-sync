@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
@@ -23,6 +23,10 @@ pub struct Config {
     /// The app id of this application
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub beam_id: AppId,
+
+    /// Path of the icinga config file
+    #[clap(env, long, default_value = "/run/secrets/icinga.toml")]
+    pub icinga_config_path: PathBuf,
 }
 
 #[derive(Clone, Debug)]

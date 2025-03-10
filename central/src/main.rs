@@ -1,12 +1,13 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, fs, time::Duration};
 
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
 use config::{Config, OIDCProvider};
 use gitlab::GitLabProjectAccessTokenProvider;
+use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
 use shared::{SecretRequest, SecretRequestType, SecretResult};
-use tracing::info;
+use tracing::warn;
 
 mod auth;
 mod gitlab;
@@ -27,6 +28,8 @@ pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitLabProjectAccess
     Lazy::new(GitLabProjectAccessTokenProvider::try_init);
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
+
+pub static ICINGA_CLIENT: Lazy<Option<IcingaClient>> = Lazy::new(try_create_icinga_client);
 
 #[tokio::main]
 async fn main() {
@@ -147,6 +150,30 @@ pub async fn is_valid(
             gitlab_project_access_token_provider
                 .validate_token(requester, secret)
                 .await
+        }
+    }
+}
+
+fn try_create_icinga_client() -> Option<IcingaClient> {
+    let content = match fs::read_to_string(&CONFIG.icinga_config_path) {
+        Ok(content) => content,
+        Err(err) => {
+            warn!("Disabling icinga reporting because reading icinga config failed: {err}");
+            return None;
+        }
+    };
+    let icinga_config = match toml::from_str(&content) {
+        Ok(icinga_config) => icinga_config,
+        Err(err) => {
+            warn!("Disabling icinga reporting because parsing icinga config failed: {err}");
+            return None;
+        }
+    };
+    match IcingaClient::new(icinga_config) {
+        Ok(icinga_client) => Some(icinga_client),
+        Err(err) => {
+            warn!("Disabling icinga reporting because creating icinga client failed: {err}");
+            return None;
         }
     }
 }
