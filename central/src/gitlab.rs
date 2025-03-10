@@ -84,7 +84,8 @@ impl GitLabProjectAccessTokenProvider {
             report_to_icinga(
                 requester,
                 IcingaServiceState::Ok,
-                format!("Site {name} has successfully requested a new GitLab token"),
+                format!("Site {name} has successfully retrieved a new GitLab token"),
+                "rotate",
             )
             .await;
             Ok(SecretResult::Created(body.token))
@@ -99,6 +100,7 @@ impl GitLabProjectAccessTokenProvider {
                 requester,
                 IcingaServiceState::Warning,
                 format!("Site {name} requested a GitLab token but it could not be created: {err_msg}"),
+                "rotate",
             )
             .await;
             Err(err_msg)
@@ -130,6 +132,7 @@ impl GitLabProjectAccessTokenProvider {
             requester,
             IcingaServiceState::Ok,
             format!("Site {name} has successfully validated an existing GitLab token"),
+            "validate",
         )
         .await;
 
@@ -137,7 +140,7 @@ impl GitLabProjectAccessTokenProvider {
     }
 }
 
-pub async fn report_to_icinga(requester: &AppId, state: IcingaServiceState, message: String) {
+pub async fn report_to_icinga(requester: &AppId, state: IcingaServiceState, message: String, action: &str) {
     let Some(icinga_client) = ICINGA_CLIENT.as_ref() else {
         return;
     };
@@ -148,8 +151,9 @@ pub async fn report_to_icinga(requester: &AppId, state: IcingaServiceState, mess
             exit_status: IcingaState::Service(state),
             plugin_output: message.clone(),
             filter: format!(
-                "host.address==\"{}\" && service.name==\"bridgehead-git-access-token-rotation\"",
-                requester.proxy_id()
+                "host.address==\"{}\" && service.name==\"bridgehead-git-access-token-rotation-{}\"",
+                requester.proxy_id(),
+                action,
             ),
             ..Default::default()
         })
