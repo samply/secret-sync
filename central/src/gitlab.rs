@@ -1,8 +1,12 @@
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
+use icinga_client::{IcingaProcessResult, IcingaServiceState, IcingaState};
 use serde::Deserialize;
 use serde_json::json;
 use shared::SecretResult;
+use tracing::warn;
+
+use crate::{CONFIG, ICINGA_CLIENT};
 
 #[derive(Parser)]
 struct GitLabApiConfig {
@@ -42,10 +46,7 @@ impl GitLabProjectAccessTokenProvider {
     }
 
     /// Create a project access token using the GitLab API
-    pub async fn create_token(
-        &self,
-        requester: &AppId,
-    ) -> Result<SecretResult, String> {
+    pub async fn create_token(&self, requester: &AppId) -> Result<SecretResult, String> {
         let name = requester.as_ref().split('.').nth(1).unwrap();
         let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
 
@@ -80,23 +81,34 @@ impl GitLabProjectAccessTokenProvider {
 
         if response.status().is_success() {
             let body: GitLabApiReponseBody = response.json().await.map_err(|e| e.to_string())?;
+            report_to_icinga(
+                requester,
+                IcingaServiceState::Ok,
+                format!("Site {name} has successfully retrieved a new GitLab token"),
+                "rotate",
+            )
+            .await;
             Ok(SecretResult::Created(body.token))
         } else {
-            Err(format!(
+            let err_msg = format!(
                 "HTTP status error {} for url {} with body {}",
                 response.status(),
                 response.url().clone(),
                 response.text().await.map_err(|e| e.to_string())?
-            ))
+            );
+            report_to_icinga(
+                requester,
+                IcingaServiceState::Warning,
+                format!("Site {name} requested a GitLab token but it could not be created: {err_msg}"),
+                "rotate",
+            )
+            .await;
+            Err(err_msg)
         }
     }
 
     /// Simulate a git fetch to check the validity of the token
-    pub async fn validate_token(
-        &self,
-        requester: &AppId,
-        secret: &str,
-    ) -> Result<bool, String> {
+    pub async fn validate_token(&self, requester: &AppId, secret: &str) -> Result<bool, String> {
         let name = requester.as_ref().split('.').nth(1).unwrap();
         let gitlab_repo = self.config.gitlab_repo_format.replace('#', name);
 
@@ -116,6 +128,51 @@ impl GitLabProjectAccessTokenProvider {
             .await
             .map_err(|e| e.to_string())?;
 
+        report_to_icinga(
+            requester,
+            IcingaServiceState::Ok,
+            format!("Site {name} has successfully validated an existing GitLab token"),
+            "validate",
+        )
+        .await;
+
         Ok(response.status().is_success())
     }
+}
+
+pub async fn report_to_icinga(requester: &AppId, state: IcingaServiceState, message: String, action: &str) {
+    let Some(icinga_client) = ICINGA_CLIENT.as_ref() else {
+        return;
+    };
+
+    // send site report
+    icinga_client
+        .report_to_icinga(&IcingaProcessResult {
+            exit_status: IcingaState::Service(state),
+            plugin_output: message.clone(),
+            filter: format!(
+                "host.address==\"{}\" && service.name==\"bridgehead-git-access-token-rotation-{}\"",
+                requester.proxy_id(),
+                action,
+            ),
+            ..Default::default()
+        })
+        .await
+        .inspect_err(|e| warn!("Failed to report to icinga: {e}"))
+        .ok();
+
+    // send central report
+    icinga_client
+        .report_to_icinga(&IcingaProcessResult {
+            exit_status: IcingaState::Service(state),
+            plugin_output: message,
+            filter: format!(
+                "host.address==\"{}\" && service.name==\"git-access-token-rotator\"",
+                CONFIG.beam_id.proxy_id(),
+            ),
+            ..Default::default()
+        })
+        .await
+        .inspect_err(|e| warn!("Failed to report to icinga: {e}"))
+        .ok();
 }
