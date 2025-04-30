@@ -118,7 +118,7 @@ impl GitLabProjectAccessTokenProvider {
             report_to_icinga(
                 requester,
                 IcingaServiceState::Ok,
-                format!("Site {name} has successfully retrieved a new GitLab token"),
+                format!("Site {name} has successfully retrieved a new GitLab token for {}/{}", config.gitlab_url, gitlab_repo),
                 "rotate",
             )
             .await;
@@ -173,7 +173,7 @@ impl GitLabProjectAccessTokenProvider {
         report_to_icinga(
             requester,
             IcingaServiceState::Ok,
-            format!("Site {name} has successfully validated an existing GitLab token"),
+            format!("Site {name} has successfully validated an existing GitLab token for {}/{}", config.gitlab_url, gitlab_repo),
             "validate",
         )
         .await;
