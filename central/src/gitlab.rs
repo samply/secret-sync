@@ -84,8 +84,8 @@ impl GitLabProjectAccessTokenProvider {
         let name = requester.as_ref().split('.').nth(1).unwrap();
         let gitlab_repo = config.gitlab_repo_format.replace('#', name);
 
-        // Expire in 1 week
-        let expires_at = (chrono::Local::now() + chrono::TimeDelta::weeks(1))
+        // Expire in 1/2 year
+        let expires_at = (chrono::Local::now() + chrono::TimeDelta::days(30 * 6))
             .format("%Y-%m-%d")
             .to_string();
 
