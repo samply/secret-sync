@@ -225,20 +225,26 @@ impl GitlabTokenProvider {
             .map_err(|e| e.to_string())?;
 
         if !response.status().is_success() {
-            let err_msg = format!(
-                "HTTP status error {} for url {} with body {}",
-                response.status(),
-                response.url().clone(),
-                response.text().await.map_err(|e| e.to_string())?
-            );
-            report_to_icinga(
-                site,
-                IcingaServiceState::Warning,
-                format!("Failed to rotate the token: {err_msg}"),
-                "rotate",
-            )
-            .await;
-            return Err(format!("Failed to rotate the token: {err_msg}"));
+            // When token rotation was implemented, existing tokens were still missing the "self_rotate" scope
+            // meaning that token rotation was not possible. Thus we need to create a new token instead.
+            return self.create(site, gitlab_config).await;
+
+            // In the future, we can remove the call to create() and uncomment this code to report the error to Icinga
+
+            // let err_msg = format!(
+            //     "HTTP status error {} for url {} with body {}",
+            //     response.status(),
+            //     response.url().clone(),
+            //     response.text().await.map_err(|e| e.to_string())?
+            // );
+            // report_to_icinga(
+            //     site,
+            //     IcingaServiceState::Warning,
+            //     format!("Failed to rotate the token: {err_msg}"),
+            //     "rotate",
+            // )
+            // .await;
+            // return Err(format!("Failed to rotate the token: {err_msg}"));
         }
 
         let response: CreateTokenResponse = response.json().await.map_err(|e| e.to_string())?;
