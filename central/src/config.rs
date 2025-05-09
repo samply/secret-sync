@@ -2,7 +2,7 @@ use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
-use shared::{OIDCConfig, SecretResult};
+use shared::{OIDCConfig, RequestType, SecretResult};
 
 use crate::auth::{
     authentik::{self, AuthentikConfig},
@@ -47,10 +47,28 @@ impl OIDCProvider {
         }
     }
 
+    pub async fn handle_secret_request(
+        &self,
+        request_type: RequestType,
+        oidc_client_config: &OIDCConfig,
+        from: &AppId,
+    ) -> Result<SecretResult, String> {
+        let name = from.as_ref().split('.').nth(1).unwrap();
+        match request_type {
+            RequestType::ValidateOrCreate(current) if self.validate_client(
+                name,
+                &current,
+                oidc_client_config,
+            ).await? => 
+                Ok(SecretResult::AlreadyValid),
+            _ => self.create_client(name, oidc_client_config).await,
+        }
+    }
+
     pub async fn create_client(
         &self,
         name: &str,
-        oidc_client_config: OIDCConfig,
+        oidc_client_config: &OIDCConfig,
     ) -> Result<SecretResult, String> {
         match self {
             OIDCProvider::Keycloak(conf) => {

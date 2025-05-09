@@ -1,4 +1,4 @@
-use std::{ops::Deref, process::ExitCode, time::Duration};
+use std::{process::ExitCode, time::Duration};
 
 use beam_lib::{
     reqwest::{self, StatusCode},
@@ -9,7 +9,7 @@ use clap::Parser;
 use config::{Config, SecretArg};
 use futures::TryFutureExt;
 use once_cell::sync::Lazy;
-use shared::{SecretRequest, SecretRequestType, SecretResult};
+use shared::{RequestType, SecretRequest, SecretResult, SecretType};
 
 mod cache;
 mod config;
@@ -31,12 +31,15 @@ async fn main() -> ExitCode {
         .iter()
         .map(|SecretArg { name, request }| {
             if let Some(current) = cache.get(name) {
-                SecretRequestType::ValidateOrCreate {
-                    current: current.clone(),
-                    request: request.clone(),
+                SecretRequest {
+                    request_type: RequestType::ValidateOrCreate(current.clone()),
+                    secret_type: request.clone(),
                 }
             } else {
-                SecretRequestType::Create(request.clone())
+                SecretRequest {
+                    request_type: RequestType::Create,
+                    secret_type: request.clone(),
+                }
             }
         })
         .collect();
@@ -97,7 +100,7 @@ async fn main() -> ExitCode {
 }
 
 async fn send_secret_request(
-    secret_requests: Vec<SecretRequestType>,
+    secret_requests: Vec<SecretRequest>,
 ) -> beam_lib::Result<Vec<Result<SecretResult, String>>> {
     wait_for_beam_proxy().await?;
 
@@ -105,9 +108,9 @@ async fn send_secret_request(
     let mut oidc_requests = Vec::new();
     let mut gitlab_project_access_token_requests = Vec::new();
     for secret_request in secret_requests {
-        match secret_request.deref() {
-            SecretRequest::OpenIdConnect(_) => oidc_requests.push(secret_request),
-            SecretRequest::GitLabProjectAccessToken(_) => {
+        match secret_request.secret_type {
+            SecretType::OpenIdConnect(_) => oidc_requests.push(secret_request),
+            SecretType::GitLabProjectAccessToken(_) => {
                 gitlab_project_access_token_requests.push(secret_request)
             }
         }

@@ -1,11 +1,9 @@
-use std::ops::Deref;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum SecretRequest {
+pub enum SecretType {
     OpenIdConnect(OIDCConfig),
-    GitLabProjectAccessToken(GitLabClientConfig),
+    GitLabProjectAccessToken(GitlabClientConfig),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -15,8 +13,9 @@ pub struct OIDCConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitLabClientConfig {
-    pub provider: String,
+pub struct GitlabClientConfig {
+    /// Which GitLab server to use, e.g. 'verbis' or 'bbmri'
+    pub gitlab_instance: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -27,21 +26,13 @@ pub enum SecretResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum SecretRequestType {
-    ValidateOrCreate {
-        current: String,
-        request: SecretRequest,
-    },
-    Create(SecretRequest),
+pub enum RequestType {
+    ValidateOrCreate(String),
+    Create,
 }
 
-impl Deref for SecretRequestType {
-    type Target = SecretRequest;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            SecretRequestType::ValidateOrCreate { request, .. }
-            | SecretRequestType::Create(request) => request,
-        }
-    }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SecretRequest {
+    pub request_type: RequestType,
+    pub secret_type: SecretType,
 }
