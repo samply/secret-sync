@@ -1,52 +1,77 @@
-version: "3"
-
-# This docker-compose.yaml requires that the beam demo network is running on the same computer. To run the beam demo
-# network run`./dev/beamdev demo` in the beam repository. It also assumes that the beam repository is located at
-# `../../beam` relative to this directory. If your beam directory is located somewhere else, you can overwrite this
-# default with the `BEAM_DIR` environment variable. It is recommended to set the GITLAB_API_ACCESS_TOKEN environment
-# variable in the `.env` file which is part of .gitignore and automatically loaded by docker compose.
-
 services:
-  # This container contains both a beam proxy (proxy1.broker) and the secret sync local component (secret-sync.proxy1.broker)
-  local:
-    build:
-      context: ../
-      dockerfile: Dockerfile.local
+  vault:
+    image: hashicorp/vault:latest
     environment:
-      - PROXY_ID=proxy1.broker
-      - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=app2.proxy2.broker
-      - BROKER_URL=http://broker:8080
-      - SECRET_DEFINITIONS=GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:bridgehead-configuration
-      - CACHE_PATH=/usr/local/cache/cache.txt
-    volumes:
-      - ./cache:/usr/local/cache
-    secrets:
-      - privkey.pem
-      - root.crt.pem
-    networks:
-      - dev_default
+      VAULT_DEV_ROOT_TOKEN_ID: vaulttoken123
 
-  # This container contains the secret sync central component (app2.proxy2.broker)
+  pki-setup:
+    image: hashicorp/vault:latest
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: vaulttoken123
+    volumes:
+      - ./container-setup-scripts/pki-setup.sh:/pki-setup.sh:ro
+      - pki:/pki
+    command: sh /pki-setup.sh
+
+  broker:
+    image: samply/beam-broker:main
+    depends_on:
+      pki-setup:
+        condition: service_completed_successfully
+    environment:
+      BROKER_URL: http://broker:8080
+      PKI_ADDRESS: http://vault:8200
+      PKI_APIKEY_FILE: /pki/pki.secret
+      ROOTCERT_FILE: /pki/root.crt.pem
+    volumes:
+      - pki:/pki:ro
+
+  central-proxy:
+    image: samply/beam-proxy:main
+    depends_on:
+      - broker
+    environment:
+      BROKER_URL: http://broker:8080
+      PROXY_ID: central-proxy.broker
+      APP_central_KEY: centralkey123
+      PRIVKEY_FILE: /pki/central-proxy.priv.pem
+      ROOTCERT_FILE: /pki/root.crt.pem
+    volumes:
+      - pki:/pki:ro
+
   central:
     build:
       context: ../
       dockerfile: Dockerfile.central
+    depends_on:
+      - central-proxy
     environment:
-      - BEAM_URL=http://proxy2:8082
-      - BEAM_ID=app2.proxy2.broker
-      - BEAM_SECRET=App1Secret
-      - GITLAB_URL=https://git.verbis.dkfz.de/
-      - GITLAB_API_ACCESS_TOKEN=${GITLAB_API_ACCESS_TOKEN}
-    networks:
-      - dev_default
+      - BEAM_URL=http://central-proxy:8081
+      - BEAM_ID=central.central-proxy.broker
+      - BEAM_SECRET=centralkey123
+      - verbis_GITLAB_URL=https://git.verbis.dkfz.de
+      - verbis_GITLAB_REPO_FORMAT=bridgehead-configurations/bridgehead-config-#
+      - verbis_GITLAB_API_ACCESS_TOKEN=${GITLAB_API_ACCESS_TOKEN}
 
-secrets:
-  privkey.pem:
-    file: ${BEAM_DIR:-../../beam}/dev/pki/proxy1.priv.pem
-  root.crt.pem:
-    file: ${BEAM_DIR:-../../beam}/dev/pki/root.crt.pem
+  # This container contains both a beam proxy and the secret sync local component
+  local:
+    build:
+      context: ../
+      dockerfile: Dockerfile.local
+    depends_on:
+      - central
+    environment:
+      - PROXY_ID=dev-tim.broker
+      - GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER=central.central-proxy.broker
+      - PRIVKEY_FILE=/pki/dev-tim.priv.pem
+      - ROOTCERT_FILE=/pki/root.crt.pem
+      - BROKER_URL=http://broker:8080
+      - SECRET_DEFINITIONS=GitLabProjectAccessToken:GIT_CONFIG_REPO_TOKEN:verbis
+      - CACHE_PATH=/usr/local/cache/cache.txt
+    volumes:
+      - ./cache:/usr/local/cache
+      - pki:/pki:ro
 
-networks:
-  # Add our containers to the beam demo Docker network
-  dev_default:
-    external: true
+volumes:
+  pki:

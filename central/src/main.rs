@@ -3,10 +3,10 @@ use std::{collections::HashSet, fs, time::Duration};
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
 use config::{Config, OIDCProvider};
-use gitlab::GitLabProjectAccessTokenProvider;
+use gitlab::GitlabTokenProvider;
 use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
-use shared::{SecretRequest, SecretRequestType, SecretResult};
+use shared::{SecretType, SecretRequest, SecretResult};
 use tracing::warn;
 
 mod auth;
@@ -24,8 +24,8 @@ pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
 });
 
 pub static OIDC_PROVIDER: Lazy<Option<OIDCProvider>> = Lazy::new(OIDCProvider::try_init);
-pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitLabProjectAccessTokenProvider>> =
-    Lazy::new(GitLabProjectAccessTokenProvider::try_init);
+pub static GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER: Lazy<Option<GitlabTokenProvider>> =
+    Lazy::new(GitlabTokenProvider::try_init);
 
 pub static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 
@@ -61,10 +61,10 @@ async fn main() {
     }
 }
 
-pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
+pub async fn handle_task(task: TaskRequest<Vec<SecretRequest>>) {
     let from = task.from;
     let results =
-        futures::future::join_all(task.body.into_iter().map(|t| handle_secret_task(t, &from)))
+        futures::future::join_all(task.body.into_iter().map(|t| handle_secret_request(t, &from)))
             .await;
     let result = BEAM_CLIENT
         .put_result(
@@ -85,70 +85,27 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequestType>>) {
     }
 }
 
-pub async fn handle_secret_task(
-    task: SecretRequestType,
+pub async fn handle_secret_request(
+    request: SecretRequest,
     from: &AppId,
 ) -> Result<SecretResult, String> {
-    println!("Working on secret task {task:?} from {from}");
-    match task {
-        SecretRequestType::ValidateOrCreate { current, request }
-            if is_valid(&current, &request, from).await? =>
-        {
-            Ok(SecretResult::AlreadyValid)
-        }
-        SecretRequestType::ValidateOrCreate { request, .. }
-        | SecretRequestType::Create(request) => create_secret(request, from).await,
-    }
-}
+    println!("Working on secret request {request:?} from {from}");
 
-pub async fn create_secret(
-    request: SecretRequest,
-    requester: &AppId,
-) -> Result<SecretResult, String> {
-    match request {
-        SecretRequest::OpenIdConnect(oidc_client_config) => {
+    match request.secret_type {
+        SecretType::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
-            let name = requester.as_ref().split('.').nth(1).unwrap();
-            oidc_provider.create_client(name, oidc_client_config).await
+            oidc_provider.handle_secret_request(request.request_type, &oidc_client_config, from).await
         }
-        SecretRequest::GitLabProjectAccessToken(client_config) => {
-            let Some(gitlab_project_access_token_provider) =
+        SecretType::GitLabProjectAccessToken(client_config) => {
+            let Some(gitlab_token_provider) =
                 GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
             else {
                 return Err("No GitLab project access token provider configured!".into());
             };
-            gitlab_project_access_token_provider
-                .create_token(requester, &client_config.provider)
-                .await
-        }
-    }
-}
-
-pub async fn is_valid(
-    secret: &str,
-    request: &SecretRequest,
-    requester: &AppId,
-) -> Result<bool, String> {
-    match request {
-        SecretRequest::OpenIdConnect(oidc_client_config) => {
-            let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
-                return Err("No OIDC provider configured!".into());
-            };
-            let name = requester.as_ref().split('.').nth(1).unwrap();
-            oidc_provider
-                .validate_client(name, secret, oidc_client_config)
-                .await
-        }
-        SecretRequest::GitLabProjectAccessToken(client_config) => {
-            let Some(gitlab_project_access_token_provider) =
-                GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
-            else {
-                return Err("No GitLab project access token provider configured!".into());
-            };
-            gitlab_project_access_token_provider
-                .validate_token(requester, &client_config.provider, secret)
+            gitlab_token_provider
+                .handle_secret_request(request.request_type, &client_config, from)
                 .await
         }
     }

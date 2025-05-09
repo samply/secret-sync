@@ -109,11 +109,11 @@ pub async fn validate_application(
 
 pub async fn create_app_provider(
     name: &str,
-    oidc_client_config: OIDCConfig,
+    oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
     let token = get_access_token(conf).await?;
-    combine_app_provider(&token, name, &oidc_client_config, conf).await
+    combine_app_provider(&token, name, oidc_client_config, conf).await
 }
 
 pub async fn combine_app_provider(

@@ -2,7 +2,7 @@ use std::{convert::Infallible, path::PathBuf, str::FromStr};
 
 use beam_lib::AppId;
 use clap::Parser;
-use shared::{OIDCConfig, SecretRequest};
+use shared::{OIDCConfig, SecretType};
 
 /// Local secret sync
 #[derive(Debug, Parser)]
@@ -46,7 +46,7 @@ impl FromStr for SecretDefinitions {
 #[derive(Debug, Clone)]
 pub struct SecretArg {
     pub name: String,
-    pub request: SecretRequest,
+    pub request: SecretType,
 }
 
 impl FromStr for SecretArg {
@@ -67,14 +67,14 @@ impl FromStr for SecretArg {
                     _ => return Err(format!("Invalid OIDC parameters '{args}'. Syntax is <public|private>;<redirect_url1,redirect_url2,...>")),
                 };
                 let redirect_urls = args.split(',').map(ToString::to_string).collect();
-                Ok(SecretRequest::OpenIdConnect(OIDCConfig {
+                Ok(SecretType::OpenIdConnect(OIDCConfig {
                     redirect_urls,
                     is_public,
                 }))
             }
-            "GitLabProjectAccessToken" => Ok(SecretRequest::GitLabProjectAccessToken(
-                shared::GitLabClientConfig {
-                    provider: args.to_string(),
+            "GitLabProjectAccessToken" => Ok(SecretType::GitLabProjectAccessToken(
+                shared::GitlabClientConfig {
+                    gitlab_instance: args.to_string(),
                 },
             )),
             _ => Err(format!("Unknown secret type {secret_type}")),

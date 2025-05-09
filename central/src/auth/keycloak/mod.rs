@@ -33,7 +33,7 @@ pub struct KeyCloakConfig {
 
 pub async fn create_client(
     name: &str,
-    oidc_client_config: OIDCConfig,
+    oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> anyhow::Result<SecretResult> {
     let token = get_access_token(conf).await?;
