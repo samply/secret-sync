@@ -5,10 +5,11 @@ use icinga_client::{IcingaProcessResult, IcingaServiceState, IcingaState};
 use serde::Deserialize;
 use serde_json::json;
 use shared::{GitlabClientConfig, RequestType, SecretResult};
+use time::format_description::BorrowedFormatItem;
 use tracing::warn;
 
-const TOKEN_LIFETIME: chrono::Duration = chrono::Duration::days(30);
-const MIN_REMAINING_TIME: chrono::Duration = chrono::Duration::days(15);
+const TOKEN_LIFETIME: time::Duration = time::Duration::days(30);
+const MIN_REMAINING_TIME: time::Duration = time::Duration::days(15);
 
 use crate::{CONFIG, ICINGA_CLIENT};
 
@@ -21,14 +22,20 @@ struct GitlabConfig {
     pub gitlab_api_access_token: String,
 }
 
-#[derive(Deserialize)]
-struct CreateTokenResponse {
-    token: String,
-}
+const ISO_DATE_FORMAT: &[BorrowedFormatItem<'_>] =
+    time::macros::format_description!("[year]-[month]-[day]");
+time::serde::format_description!(iso_date_format, Date, ISO_DATE_FORMAT);
 
 #[derive(Deserialize, Debug)]
 struct TokenDetailsResponse {
-    expires_at: String,
+    id: u32,
+    #[serde(with = "iso_date_format")]
+    expires_at: time::Date,
+}
+
+#[derive(Deserialize)]
+struct CreateTokenResponse {
+    token: String,
 }
 
 pub struct GitlabTokenProvider {
@@ -102,49 +109,31 @@ impl GitlabTokenProvider {
         };
 
         match request_type {
-            RequestType::ValidateOrCreate(current_token) => {
-                self.validate_or_create_workaround(&from.proxy_id(), gitlab_config, &current_token)
+            RequestType::ValidateOrCreate(current_token)
+                if self
+                    .validate(&from.proxy_id(), gitlab_config, &current_token)
+                    .await? =>
+            {
+                Ok(SecretResult::AlreadyValid)
+            }
+            _ => {
+                self.rotate_newest_or_create(&from.proxy_id(), gitlab_config)
                     .await
             }
-            RequestType::Create => self.create(&from.proxy_id(), gitlab_config).await,
         }
     }
 
-    // Workaround for https://gitlab.com/gitlab-org/gitlab/-/issues/523871
-    // If they ever fix this, we can remove this function and use the validate_or_create function
-    async fn validate_or_create_workaround(
+    async fn list_active_tokens(
         &self,
         site: &ProxyId,
         gitlab_config: &GitlabConfig,
-        current_token: &str,
-    ) -> Result<SecretResult, String> {
+        action: &str,
+    ) -> Result<Vec<TokenDetailsResponse>, String> {
         let gitlab_repo = gitlab_config
             .gitlab_repo_format
             .replace('#', site.as_ref().split('.').nth(0).unwrap());
 
-        // Simulate a git fetch to check if the token is valid
-        let response = self
-            .client
-            .get(
-                gitlab_config
-                    .gitlab_url
-                    .join(&format!(
-                        "{}.git/info/refs?service=git-upload-pack",
-                        gitlab_repo
-                    ))
-                    .map_err(|e| e.to_string())?,
-            )
-            .basic_auth("Secret Sync", Some(current_token))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if !response.status().is_success() {
-            // If the token does not work, create a new one
-            return self.create(site, gitlab_config).await;
-        }
-
-        // List all active tokens with the name "Secret Sync Token for {site}"
+        // List active tokens with the name "Secret Sync Token for {site}"
         let response = self
             .client
             .get(
@@ -173,180 +162,73 @@ impl GitlabTokenProvider {
                 site,
                 IcingaServiceState::Warning,
                 format!("Failed to list tokens: {err_msg}"),
-                "validate",
+                action,
             )
             .await;
             return Err(format!("Failed to list tokens: {err_msg}"));
         }
 
-        let response: Vec<TokenDetailsResponse> =
-            response.json().await.map_err(|e| e.to_string())?;
-
-        // Check if all active tokens are still valid for at least MIN_REMAINING_TIME
-        if response.iter().all(|token| {
-            let expires_at = chrono::NaiveDate::parse_from_str(&token.expires_at, "%Y-%m-%d")
-                .map_err(|e| e.to_string())
-                .unwrap();
-            expires_at - chrono::Local::now().date_naive() >= MIN_REMAINING_TIME
-        }) {
-            report_to_icinga(
-                site,
-                IcingaServiceState::Ok,
-                format!(
-                    "Site {site} validated their GitLab token for {}{}. The token is valid for at least {} more days.",
-                    gitlab_config.gitlab_url,
-                    gitlab_repo,
-                    MIN_REMAINING_TIME.num_days()
-                ),
-                "validate",
-            )
-            .await;
-            return Ok(SecretResult::AlreadyValid);
-        }
-
-        // Rotate the token
-        let response = self
-            .client
-            .post(
-                gitlab_config
-                    .gitlab_url
-                    .join(&format!(
-                        "api/v4/projects/{}/access_tokens/self/rotate",
-                        urlencoding::encode(&gitlab_repo)
-                    ))
-                    .map_err(|e| e.to_string())?,
-            )
-            .header("PRIVATE-TOKEN", current_token)
-            .json(&json!({
-                "expires_at": (chrono::Local::now() + TOKEN_LIFETIME).format("%Y-%m-%d").to_string(),
-            }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if !response.status().is_success() {
-            // When token rotation was implemented, existing tokens were still missing the "self_rotate" scope
-            // meaning that token rotation was not possible. Thus we need to create a new token instead.
-            return self.create(site, gitlab_config).await;
-
-            // In the future, we can remove the call to create() and uncomment this code to report the error to Icinga
-
-            // let err_msg = format!(
-            //     "HTTP status error {} for url {} with body {}",
-            //     response.status(),
-            //     response.url().clone(),
-            //     response.text().await.map_err(|e| e.to_string())?
-            // );
-            // report_to_icinga(
-            //     site,
-            //     IcingaServiceState::Warning,
-            //     format!("Failed to rotate the token: {err_msg}"),
-            //     "rotate",
-            // )
-            // .await;
-            // return Err(format!("Failed to rotate the token: {err_msg}"));
-        }
-
-        let response: CreateTokenResponse = response.json().await.map_err(|e| e.to_string())?;
-        Ok(SecretResult::AlreadyExisted(response.token))
+        response.json().await.map_err(|e| e.to_string())
     }
 
-    // When GitLab fixes https://gitlab.com/gitlab-org/gitlab/-/issues/523871, we can use this function instead of the workaround
-    #[allow(dead_code)]
-    async fn validate_or_create(
+    async fn validate(
         &self,
         site: &ProxyId,
         gitlab_config: &GitlabConfig,
         current_token: &str,
-    ) -> Result<SecretResult, String> {
+    ) -> Result<bool, String> {
         let gitlab_repo = gitlab_config
             .gitlab_repo_format
             .replace('#', site.as_ref().split('.').nth(0).unwrap());
 
-        // Check when the token will expire
+        // Simulate a git fetch to check if the token is active
         let response = self
             .client
             .get(
                 gitlab_config
                     .gitlab_url
                     .join(&format!(
-                        "api/v4/projects/{}/access_tokens/self",
-                        urlencoding::encode(&gitlab_repo)
+                        "{}.git/info/refs?service=git-upload-pack",
+                        gitlab_repo
                     ))
                     .map_err(|e| e.to_string())?,
             )
-            .header("PRIVATE-TOKEN", current_token)
+            .basic_auth("Secret Sync", Some(current_token))
             .send()
             .await
             .map_err(|e| e.to_string())?;
 
         if !response.status().is_success() {
-            // This means the token is invalid or expired, so we need to create a new one
-            return self.create(site, gitlab_config).await;
+            return Ok(false);
         }
 
-        // Check if the token is still valid for at least MIN_REMAINING_TIME
-        let response: TokenDetailsResponse = response.json().await.map_err(|e| e.to_string())?;
-        let expires_at = chrono::NaiveDate::parse_from_str(&response.expires_at, "%Y-%m-%d")
-            .map_err(|e| e.to_string())?;
-        if expires_at - chrono::Local::now().date_naive() >= MIN_REMAINING_TIME {
+        // Check if all active tokens are still valid for at least MIN_REMAINING_TIME
+        // We don't know which token we have, so we have to check all of them
+        if self
+            .list_active_tokens(site, gitlab_config, "validate")
+            .await?
+            .iter()
+            .all(|token| token.expires_at - time::UtcDateTime::now().date() >= MIN_REMAINING_TIME)
+        {
             report_to_icinga(
                 site,
                 IcingaServiceState::Ok,
                 format!(
-                    "Site {site} validated their GitLab token for {}{}. The token is valid for {} more days.",
+                    "Site {site} validated their GitLab token, which is valid for at least {} more days, for {}{}.",
+                    MIN_REMAINING_TIME.whole_days(),
                     gitlab_config.gitlab_url,
-                    gitlab_repo,
-                    (expires_at - chrono::Local::now().date_naive()).num_days()
+                    gitlab_repo
                 ),
                 "validate",
             )
             .await;
-            return Ok(SecretResult::AlreadyValid);
+            return Ok(true);
         }
 
-        // Rotate the token
-        let response = self
-            .client
-            .post(
-                gitlab_config
-                    .gitlab_url
-                    .join(&format!(
-                        "api/v4/projects/{}/access_tokens/self/rotate",
-                        urlencoding::encode(&gitlab_repo)
-                    ))
-                    .map_err(|e| e.to_string())?,
-            )
-            .header("PRIVATE-TOKEN", current_token)
-            .json(&json!({
-                "expires_at": (chrono::Local::now() + TOKEN_LIFETIME).format("%Y-%m-%d").to_string(),
-            }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if !response.status().is_success() {
-            let err_msg = format!(
-                "HTTP status error {} for url {} with body {}",
-                response.status(),
-                response.url().clone(),
-                response.text().await.map_err(|e| e.to_string())?
-            );
-            report_to_icinga(
-                site,
-                IcingaServiceState::Warning,
-                format!("Failed to rotate the token: {err_msg}"),
-                "rotate",
-            )
-            .await;
-            return Err(format!("Failed to rotate the token: {err_msg}"));
-        }
-
-        let response: CreateTokenResponse = response.json().await.map_err(|e| e.to_string())?;
-        Ok(SecretResult::AlreadyExisted(response.token))
+        Ok(false)
     }
 
-    async fn create(
+    async fn rotate_newest_or_create(
         &self,
         site: &ProxyId,
         gitlab_config: &GitlabConfig,
@@ -354,6 +236,68 @@ impl GitlabTokenProvider {
         let gitlab_repo = gitlab_config
             .gitlab_repo_format
             .replace('#', site.as_ref().split('.').nth(0).unwrap());
+
+        // Find the token with the latest expiration date
+        if let Some(token) = self
+            .list_active_tokens(site, gitlab_config, "rotate")
+            .await?
+            .iter()
+            .max_by_key(|token| token.expires_at)
+        {
+            // Rotate the token
+            let response = self
+                .client
+                .post(
+                    gitlab_config
+                        .gitlab_url
+                        .join(&format!(
+                            "api/v4/projects/{}/access_tokens/{}/rotate",
+                            urlencoding::encode(&gitlab_repo),
+                            token.id
+                        ))
+                        .map_err(|e| e.to_string())?,
+                )
+                .header("PRIVATE-TOKEN", &gitlab_config.gitlab_api_access_token)
+                .json(&json!({
+                    "expires_at": (time::UtcDateTime::now() + TOKEN_LIFETIME).format(ISO_DATE_FORMAT).unwrap(),
+                }))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if !response.status().is_success() {
+                let err_msg = format!(
+                    "HTTP status error {} for url {} with body {}",
+                    response.status(),
+                    response.url().clone(),
+                    response.text().await.map_err(|e| e.to_string())?
+                );
+                report_to_icinga(
+                    site,
+                    IcingaServiceState::Warning,
+                    format!("Failed to rotate the token: {err_msg}"),
+                    "rotate",
+                )
+                .await;
+                return Err(format!("Failed to rotate the token: {err_msg}"));
+            }
+
+            let response: CreateTokenResponse = response.json().await.map_err(|e| e.to_string())?;
+
+            report_to_icinga(
+                site,
+                IcingaServiceState::Ok,
+                format!(
+                    "Site {site} rotated their GitLab token, which is valid for {} more days, for {}{}.",
+                    TOKEN_LIFETIME.whole_days(),
+                    gitlab_config.gitlab_url,
+                    gitlab_repo
+                ),
+                "rotate",
+            ).await;
+
+            return Ok(SecretResult::AlreadyExisted(response.token));
+        }
 
         // Create a new token
         let response = self
@@ -371,10 +315,10 @@ impl GitlabTokenProvider {
             .json(&json!({
                 "name": format!("Secret Sync Token for {site}"),
                 // The "read_repository" scope is required for git clone/pull permissions
-                "scopes": ["read_repository", "self_rotate"],
+                "scopes": ["read_repository"],
                 // Access level 20 (Reporter) is the lowest level that allows git clone/pull
                 "access_level": 20,
-                "expires_at": (chrono::Local::now() + TOKEN_LIFETIME).format("%Y-%m-%d").to_string(),
+                "expires_at": (time::UtcDateTime::now() + TOKEN_LIFETIME).format(ISO_DATE_FORMAT).unwrap(),
             }))
             .send()
             .await
@@ -402,10 +346,10 @@ impl GitlabTokenProvider {
             site,
             IcingaServiceState::Ok,
             format!(
-                "Site {site} created a GitLab token for {}{}. The token is valid for {} more days.",
+                "Site {site} created a GitLab token, which is valid for {} more days, for {}{}.",
+                TOKEN_LIFETIME.whole_days(),
                 gitlab_config.gitlab_url,
-                gitlab_repo,
-                TOKEN_LIFETIME.num_days()
+                gitlab_repo
             ),
             "rotate",
         )
