@@ -2,6 +2,7 @@ use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
+use tracing::info;
 use shared::{OIDCConfig, RequestType, SecretResult};
 
 use crate::auth::{
@@ -41,7 +42,7 @@ impl OIDCProvider {
             (Ok(key), _) => Some(OIDCProvider::Keycloak(key)),
             (_, Ok(auth)) => Some(OIDCProvider::Authentik(auth)),
             (Err(e), _) => {
-                eprintln!("{e:#?}");
+                info!("on init: {e:#?}");
                 None
             }
         }
@@ -79,7 +80,7 @@ impl OIDCProvider {
             }
         }
         .map_err(|e| {
-            println!("Failed to create client: {e}");
+            info!("Failed to create client: {e:#?}");
             "Error creating OIDC client".into()
         })
     }
@@ -95,7 +96,7 @@ impl OIDCProvider {
                 keycloak::validate_client(name, oidc_client_config, secret, conf)
                     .await
                     .map_err(|e| {
-                        eprintln!("Failed to validate client {name}: {e}");
+                        info!("Failed to validate client {name}: {e:#?}");
                         "Failed to validate client. See upstrean logs.".into()
                     })
             }
@@ -103,7 +104,7 @@ impl OIDCProvider {
                 authentik::validate_application(name, oidc_client_config, secret, conf)
                     .await
                     .map_err(|e| {
-                        eprintln!("Failed to validate client {name}: {e}");
+                        info!("Failed to validate client {name}: {e:#?}");
                         "Failed to validate client. See upstrean logs.".into()
                     })
             }
