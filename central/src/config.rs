@@ -2,7 +2,7 @@ use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
-use tracing::info;
+use tracing::{debug, info, warn};
 use shared::{OIDCConfig, RequestType, SecretResult};
 
 use crate::auth::{
@@ -41,8 +41,9 @@ impl OIDCProvider {
         match (KeyCloakConfig::try_parse(), AuthentikConfig::try_parse()) {
             (Ok(key), _) => Some(OIDCProvider::Keycloak(key)),
             (_, Ok(auth)) => Some(OIDCProvider::Authentik(auth)),
-            (Err(e), _) => {
-                info!("on init: {e:#?}");
+            (Err(e_authentik), Err(e_keycloak)) => {
+                warn!("No OIDC provider is configured");
+                debug!(?e_authentik, ?e_keycloak);
                 None
             }
         }
