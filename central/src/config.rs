@@ -80,7 +80,7 @@ impl OIDCProvider {
             }
         }
         .map_err(|e| {
-            info!("Failed to create client: {e:#?}");
+            warn!("Failed to create client: {e:#?}");
             "Error creating OIDC client".into()
         })
     }
