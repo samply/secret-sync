@@ -9,6 +9,7 @@ use clap::Parser;
 use config::{Config, SecretArg};
 use futures::TryFutureExt;
 use once_cell::sync::Lazy;
+use tracing::{info, warn};
 use shared::{RequestType, SecretRequest, SecretResult, SecretType};
 
 mod cache;
@@ -24,6 +25,7 @@ pub static BEAM_CLIENT: Lazy<BeamClient> =
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    tracing_subscriber::fmt::init();
     let mut cache = Cache::open(&CONFIG.cache_path);
     let tasks: Vec<_> = CONFIG
         .secret_definitions
@@ -44,15 +46,15 @@ async fn main() -> ExitCode {
         })
         .collect();
     if tasks.is_empty() {
-        println!("No secrets to generate");
+        info!("No secrets to generate");
         return ExitCode::SUCCESS;
     } else {
-        println!("Generating {} secrets", tasks.len());
+        info!("Generating {} secrets", tasks.len());
     }
     let results = match send_secret_request(tasks).await {
         Ok(results) => results,
         Err(e) => {
-            eprintln!("Failed to send secret sync task: {e}");
+            warn!("Failed to send secret sync task: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -63,15 +65,15 @@ async fn main() -> ExitCode {
     {
         match result {
             Ok(SecretResult::AlreadyValid) => {
-                println!("{name} was cached correctly.")
+                info!("{name} was cached correctly.")
             }
             Ok(SecretResult::Created(secret)) => {
                 cache.entry(name.to_string())
                     .and_modify(|v| {
-                        println!("{name} was cached locally but did not exist centrally so it was created.");
+                        info!("{name} was cached locally but did not exist centrally so it was created.");
                         *v = secret.clone()
                     }).or_insert_with(|| {
-                        println!("{name} has been created.");
+                        info!("{name} has been created.");
                         secret
                     });
             }
@@ -79,17 +81,17 @@ async fn main() -> ExitCode {
                 cache
                     .entry(name.to_string())
                     .and_modify(|v| {
-                        println!("{name} was cached but needed to be updated.");
+                        info!("{name} was cached but needed to be updated.");
                         *v = secret.clone()
                     })
                     .or_insert_with(|| {
-                        println!("{name} already existed but was not cached.");
+                        info!("{name} already existed but was not cached.");
                         secret
                     });
             }
             Err(e) => {
                 exit_code = ExitCode::FAILURE;
-                println!("Failed to validate or create secret for {name}: {e}")
+                warn!("Failed to validate or create secret for {name}: {e}")
             }
         }
     }

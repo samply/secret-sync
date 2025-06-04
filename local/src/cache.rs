@@ -1,4 +1,5 @@
 use std::{collections::HashMap, fs, io, ops::DerefMut, path::Path};
+use tracing::warn;
 
 pub struct Cache(HashMap<String, String>);
 
@@ -19,7 +20,7 @@ impl DerefMut for Cache {
 impl Cache {
     pub fn open(path: impl AsRef<Path>) -> Cache {
         let Ok(file) = fs::read_to_string(path) else {
-            eprintln!("Cached secrets not found creating");
+            warn!("Cached secrets not found creating");
             return Self(HashMap::new());
         };
         Self(
