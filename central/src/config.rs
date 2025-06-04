@@ -104,7 +104,7 @@ impl OIDCProvider {
                 authentik::validate_application(name, oidc_client_config, secret, conf)
                     .await
                     .map_err(|e| {
-                        info!("Failed to validate client {name}: {e:#?}");
+                        warn!("Failed to validate client {name}: {e:#?}");
                         "Failed to validate client. See upstrean logs.".into()
                     })
             }
