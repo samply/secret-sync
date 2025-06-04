@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::PathBuf};
+ use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
