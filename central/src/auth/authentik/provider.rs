@@ -30,7 +30,9 @@ pub async fn generate_provider_values(
         "name": client_id,
         "client_id": client_id,
         "authorization_flow": mapping.authorization_flow,
-        "invalidation_flow": mapping.invalidation_flow,
+        "invalidation_flow": mapping.invalidation_flow
+    });
+    /*
         "property_mappings": [
             mapping.property_mapping["web-origins"],
             mapping.property_mapping["acr"],
@@ -40,15 +42,22 @@ pub async fn generate_provider_values(
             mapping.property_mapping["microprofile-jwt"],
             mapping.property_mapping["groups"]
         ]
-    });
+         */
 
     if !oidc_client_config.redirect_urls.is_empty() {
         let res_urls: Vec<RedirectURIS> = oidc_client_config
             .redirect_urls
             .iter()
-            .map(|url| RedirectURIS {
-                matching_mode: "strict".to_owned(),
-                url: url.to_owned(),
+            .map(|url| {
+                let (matching_mode, url) = if is_regex_uri(url) {
+                    ("regex".to_owned(), url.to_owned())
+                } else {
+                    ("strict".to_owned(), url.to_owned())
+                };
+                RedirectURIS {
+                    matching_mode,
+                    url,
+                }
             })
             .collect();
         json["redirect_uris"] = json!(res_urls);
@@ -156,4 +165,9 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         && a["invalidation_flow"] == b["invalidation_flow"]
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
         && redirct_url_match()
+}
+
+fn is_regex_uri(uri: &str) -> bool {
+    let regex_chars = ['^', '$', '*'];
+    uri.chars().any(|c| regex_chars.contains(&c))
 }

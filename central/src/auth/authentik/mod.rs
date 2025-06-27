@@ -24,10 +24,9 @@ pub struct AuthentikConfig {
     /// authentik url
     #[clap(long, env)]
     pub authentik_url: Url,
+    // Service Account with api token and all permissions
     #[clap(long, env)]
-    pub authentik_id: String,
-    #[clap(long, env)]
-    pub authentik_secret: String,
+    pub service_account_token: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_groups_per_bh: Vec<String>,
 }
@@ -44,16 +43,16 @@ impl FlowPropertymapping {
         if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
             return Ok(flow.clone());
         }
-        let flow_auth = "default-authorization-flow";
+        let flow_auth = "default-provider-authorization-explicit-consent";
         let flow_invalidation = "default-provider-invalidation-flow";
         let property_keys = vec![
-            "web-origins",
-            "acr",
-            "profile",
-            "roles",
-            "email",
-            "microprofile-jwt",
-            "groups",
+            //"web-origins",
+            //"acr",
+            //"profile",
+            //"roles",
+            //"email",
+            //"microprofile-jwt",
+            //"groups",
         ];
         //let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
         let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
@@ -103,7 +102,7 @@ pub async fn validate_application(
     secret: &str,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
-    let token = get_access_token(conf).await?;
+    let token = &conf.service_account_token;
     compare_app_provider(&token, name, oidc_client_config, secret, conf).await
 }
 
@@ -112,7 +111,7 @@ pub async fn create_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    let token = get_access_token(conf).await?;
+    let token = &conf.service_account_token;
     combine_app_provider(&token, name, oidc_client_config, conf).await
 }
 
@@ -274,6 +273,7 @@ async fn get_property_mappings_uuids(
     result
 }
 
+// is not used at the moment oauth2 workflow to get a Token from Service account
 async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
     #[derive(Deserialize, Serialize, Debug)]
     struct Token {
@@ -287,8 +287,8 @@ async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
         )
         .form(&json!({
             "grant_type": "client_credentials",
-            "client_id": conf.authentik_id,
-            "client_secret": conf.authentik_secret,
+            "client_id": "",
+            "client_secret": "",
             "scope": "openid"
         }))
         .send()

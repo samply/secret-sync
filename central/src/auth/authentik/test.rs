@@ -18,55 +18,26 @@ struct Token {
 }
 
 #[cfg(test)]
-pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
-    //let token = get_access_token_via_admin_login().await?;
+pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .try_init();
     let token = "".to_owned();
     Ok((
-        token,
         AuthentikConfig {
-            authentik_url: "http://localhost:9000".parse().unwrap(),
-            authentik_id: "unused in tests".into(),
-            authentik_secret: "unused in tests".into(),
+            authentik_url: "".parse().unwrap(),
+            service_account_token: token.clone(),
             authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
-        },
+        }
     ))
 }
 
-// test is working
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn get_access_test() {
-    let path_url = "http://localhost:9000/application/o/token/";
-    let response = CLIENT
-        .post(path_url)
-        .form(&json!({
-            "grant_type": "client_credentials",
-            "client_id": "",
-            "client_secret": "",
-            "scope": "openid"
-        }))
-        .send()
-        .await
-        .expect("no response");
-    // let raw = response.text().await.expect("no resoponse");
-    // dbg!(&raw);
-
-    let t = response
-        .json::<Token>()
-        .await
-        .expect("Token can not be parseed");
-    dbg!(&t);
-    assert!(!t.access_token.is_empty());
-}
-
-#[ignore = "Requires setting up a authentik"]
+//#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
+    let  conf = setup_authentik()?;
+    let token = &conf.service_account_token;
     let name = "tree";
     // public client
     let client_config = OIDCConfig {
@@ -75,6 +46,7 @@ async fn test_create_client() -> anyhow::Result<()> {
             "http://foo/bar".into(),
             "http://verbis/test".into(),
             "http://dkfz/verbis/test".into(),
+            "^http://dkfz.verbis/*".into(),
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
@@ -95,6 +67,7 @@ async fn test_create_client() -> anyhow::Result<()> {
             "http://foo/bar".into(),
             "http://verbis/test".into(),
             "http://dkfz/verbis/test".into(),
+            "^http://dkfz.verbis/*".into(),
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
@@ -109,14 +82,16 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
+    let conf = setup_authentik()?;
+    let token = &conf.service_account_token;
     create_groups("next2", &token, &conf).await
 }
 
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_flow() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let token = &conf.service_account_token;
     let test_key = "authentication_flow";
     let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
     let query_url = Url::parse_with_params(
@@ -141,7 +116,8 @@ async fn test_flow() {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_property() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let token = &conf.service_account_token;
     let test_key = "web-origins";
     let base_url = conf
         .authentik_url
@@ -167,9 +143,11 @@ async fn test_property() {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn create_property() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let token = &conf.service_account_token;
     // let flow_auth = "authorization_flow";
     // let flow_invalidation = "default-provider-invalidation-flow";
+    // not used at the moment
     let property_keys = vec![
         "web-origins",
         "acr",
@@ -200,7 +178,8 @@ async fn create_property() {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_validate_client() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
+    let conf = setup_authentik()?;
+    let token = &conf.service_account_token;
     let name = "air";
     // public client
     let client_config = OIDCConfig {
@@ -219,7 +198,8 @@ async fn test_validate_client() -> anyhow::Result<()> {
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_patch_provider() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
+    let conf = setup_authentik()?;
+    let token = &conf.service_account_token;
     let name = "dark";
     // public client
     let client_config = OIDCConfig {
@@ -255,4 +235,31 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         get_application(name, &token, &conf).await?
     );
     Ok(())
+}
+
+// test to verifie created app and provider
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn get_access_test() {
+    let path_url = "http://localhost:9000/application/o/token/";
+    let response = CLIENT
+        .post(path_url)
+        .form(&json!({
+            "grant_type": "client_credentials",
+            "client_id": "",
+            "client_secret": "",
+            "scope": "openid"
+        }))
+        .send()
+        .await
+        .expect("no response");
+    // let raw = response.text().await.expect("no resoponse");
+    // dbg!(&raw);
+
+    let t = response
+        .json::<Token>()
+        .await
+        .expect("Token can not be parseed");
+    dbg!(&t);
+    assert!(!t.access_token.is_empty());
 }
