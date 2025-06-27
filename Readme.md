@@ -64,10 +64,8 @@ services:
 
       # Optional authentik parameters
       - AUTHENTIK_URL=http://authentik:9000
-      # Client id of the authentik apps and providers which has to have permissions to create apps and providers
-      - AUTHENTIK_ID=my_authentik_admin
-      # The client secret for the client
-      - AUTHENTIK_SECRET=my_secret
+      # API Access Token 
+      - SERVICE_ACCOUNT_TOKEN=secret_token
 
       # Optional GitLab parameters. More than one GitLab server can be configured by using different prefixes like "verbis" in this example.
       # The base URL for API calls, e.g. "https://gitlab.com/".
