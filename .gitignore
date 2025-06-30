@@ -4,3 +4,4 @@ Cargo.lock
 /dev-keycloak/.env
 /dev-gitlab/cache
 /dev-gitlab/.env
+.idea/
