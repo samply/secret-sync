@@ -11,6 +11,15 @@ pub struct OIDCConfig {
     pub is_public: bool,
     pub redirect_urls: Vec<String>,
 }
+impl OIDCConfig {
+    pub fn client_type(&self, name: &str) -> String {
+        format!("{}-{}", name, if self.is_public { "public" } else { "private" })
+    }
+    //use case federation id 
+    pub fn flipped_client_type(&self, name: &str) -> String {
+        format!("{}-{}", name, if self.is_public { "private" } else { "public" })
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitlabClientConfig {

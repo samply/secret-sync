@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
 use tracing::{debug, info};
+use crate::auth::authentik::provider::check_set_federation_id;
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -26,7 +27,7 @@ pub struct AuthentikConfig {
     pub authentik_url: Url,
     // Service Account with api token and all permissions
     #[clap(long, env)]
-    pub service_account_token: String,
+    pub authentik_service_api_key: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_groups_per_bh: Vec<String>,
 }
@@ -36,6 +37,7 @@ pub struct FlowPropertymapping {
     pub authorization_flow: String,
     pub invalidation_flow: String,
     pub property_mapping: HashMap<String, String>,
+    pub federation_mapping: HashMap<String, String>
 }
 impl FlowPropertymapping {
     async fn new(conf: &AuthentikConfig, token: &str) -> reqwest::Result<Self> {
@@ -43,42 +45,37 @@ impl FlowPropertymapping {
         if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
             return Ok(flow.clone());
         }
-        let flow_auth = "default-provider-authorization-explicit-consent";
-        let flow_invalidation = "default-provider-invalidation-flow";
+        let flow_auth = "Authorize Application";
+        let flow_invalidation = "Logged out of application";
         let property_keys = vec![
-            //"web-origins",
-            //"acr",
-            //"profile",
-            //"roles",
-            //"email",
-            //"microprofile-jwt",
-            //"groups",
+            "allgroups",
+            "authentik default OAuth Mapping: OpenID 'openid'",
+            "authentik default OAuth Mapping: OpenID 'profile'",
+            "authentik default OAuth Mapping: Proxy outpost",
+            "authentik default OAuth Mapping: OpenID 'email'",
         ];
-        //let flow_url = "/api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
-        let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
-        let flow_url = Url::parse_with_params(
-            base_url.as_str(),
-            &[("orderung", "slug"), ("page", "1"), ("page_size", "20")],
-        )
-        .unwrap();
-
-        //let property_url = "/api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
-        let base_url = conf
+        let jwt_federation_sources = vec![
+            "DKFZ Account",
+            "Helmholtz ID",
+            "Login with Institutional Account (DFN-AAI)",
+            "Local Account"
+        ];
+        //let flow_url = "/api/v3/flows/instances/?name=...";
+        //let property_url = "/api/v3/propertymappings/all/?name=...";
+        let flow_url = conf
+            .authentik_url
+            .join("api/v3/flows/instances/")
+            .unwrap();
+        let property_url = conf
             .authentik_url
             .join("api/v3/propertymappings/all/")
             .unwrap();
-        let query_url = Url::parse_with_params(
-            base_url.as_str(),
-            &[
-                ("managed__isnull", "true"),
-                ("ordering", "name"),
-                ("page", "1"),
-                ("page_size", "20"),
-            ],
-        )
-        .unwrap();
-
-        let property_mapping = get_property_mappings_uuids(&query_url, token, property_keys).await;
+        let federation_url = conf
+            .authentik_url
+            .join("api/v3/sources/all/")
+            .unwrap();
+        let property_mapping = get_property_mappings_uuids(&property_url, token, property_keys).await;
+        let federation_mapping = get_property_mappings_uuids(&federation_url, token, jwt_federation_sources).await;
         let authorization_flow = get_uuid(&flow_url, token, flow_auth)
             .await
             .expect("No default flow present"); // flow uuid
@@ -90,6 +87,7 @@ impl FlowPropertymapping {
             authorization_flow,
             invalidation_flow,
             property_mapping,
+            federation_mapping
         };
         *PROPERTY_MAPPING_CACHE.lock().unwrap() = Some(mapping.clone());
         Ok(mapping)
@@ -102,7 +100,7 @@ pub async fn validate_application(
     secret: &str,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     compare_app_provider(&token, name, oidc_client_config, secret, conf).await
 }
 
@@ -111,7 +109,7 @@ pub async fn create_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     combine_app_provider(&token, name, oidc_client_config, conf).await
 }
 
@@ -121,14 +119,7 @@ pub async fn combine_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    let client_id = format!(
-        "{name}-{}",
-        if oidc_client_config.is_public {
-            "public"
-        } else {
-            "private"
-        }
-    );
+    let client_id = oidc_client_config.client_type(name);
 
     let secret = if !oidc_client_config.is_public {
         generate_secret()
@@ -150,11 +141,13 @@ pub async fn combine_app_provider(
     match provider_res.status() {
         StatusCode::CREATED => {
             let res_provider: serde_json::Value = provider_res.json().await?;
-            let provider_pk = res_provider.get("pk").and_then(|v| v.as_i64()).unwrap();
+            let provider_id = res_provider.get("pk").and_then(|v| v.as_i64()).unwrap();
             let provider_name = res_provider.get("name").and_then(|v| v.as_str()).unwrap();
-            debug!("{:?}", provider_pk);
+            // check and set federation_id 
+            check_set_federation_id(&name, provider_id, token, conf, oidc_client_config).await?;
+            debug!("{:?}", provider_id);
             info!("Provider for {provider_name} created.");
-            if check_app_result(token, &client_id, provider_pk, conf).await? {
+            if check_app_result(token, &client_id, provider_id, conf).await? {
                 Ok(SecretResult::Created(secret))
             } else {
                 bail!(
@@ -239,10 +232,10 @@ pub async fn combine_app_provider(
     }
 }
 
-async fn get_uuid(target_url: &Url, token: &str, search_key: &str) -> Option<String> {
+async fn get_uuid(target_url: &Url, token: &str, search_name: &str) -> Option<String> {
     let target_value: serde_json::Value = CLIENT
         .get(target_url.to_owned())
-        .query(&[("search", search_key)])
+        .query(&[("name", search_name)])
         .bearer_auth(token)
         .send()
         .await
@@ -250,7 +243,7 @@ async fn get_uuid(target_url: &Url, token: &str, search_key: &str) -> Option<Str
         .json()
         .await
         .ok()?;
-    debug!("Value search key {search_key}: {:?}", &target_value);
+    debug!("Value search key {search_name}: {:?}", &target_value);
     // pk is the uuid for this result
     Some(target_value["results"][0]["pk"].as_str()?.to_owned())
 }
@@ -271,29 +264,4 @@ async fn get_property_mappings_uuids(
         );
     }
     result
-}
-
-// is not used at the moment oauth2 workflow to get a Token from Service account
-async fn get_access_token(conf: &AuthentikConfig) -> reqwest::Result<String> {
-    #[derive(Deserialize, Serialize, Debug)]
-    struct Token {
-        access_token: String,
-    }
-    CLIENT
-        .post(
-            conf.authentik_url
-                .join("application/o/token/")
-                .expect("Error parsing token url"),
-        )
-        .form(&json!({
-            "grant_type": "client_credentials",
-            "client_id": "",
-            "client_secret": "",
-            "scope": "openid"
-        }))
-        .send()
-        .await?
-        .json::<Token>()
-        .await
-        .map(|t| t.access_token)
 }

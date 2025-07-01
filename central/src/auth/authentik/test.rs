@@ -27,18 +27,18 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     Ok((
         AuthentikConfig {
             authentik_url: "".parse().unwrap(),
-            service_account_token: token.clone(),
+            authentik_service_api_key: token.clone(),
             authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
         }
     ))
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let  conf = setup_authentik()?;
-    let token = &conf.service_account_token;
-    let name = "tree";
+    let token = &conf.authentik_service_api_key;
+    let name = "newtest";
     // public client
     let client_config = OIDCConfig {
         is_public: true,
@@ -83,7 +83,7 @@ async fn test_create_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
     let conf = setup_authentik()?;
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     create_groups("next2", &token, &conf).await
 }
 
@@ -91,7 +91,7 @@ async fn group_test() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_flow() {
     let conf = setup_authentik().expect("Cannot setup authentik as test");
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     let test_key = "authentication_flow";
     let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
     let query_url = Url::parse_with_params(
@@ -117,7 +117,7 @@ async fn test_flow() {
 #[tokio::test]
 async fn test_property() {
     let conf = setup_authentik().expect("Cannot setup authentik as test");
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     let test_key = "web-origins";
     let base_url = conf
         .authentik_url
@@ -144,7 +144,7 @@ async fn test_property() {
 #[tokio::test]
 async fn create_property() {
     let conf = setup_authentik().expect("Cannot setup authentik as test");
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     // let flow_auth = "authorization_flow";
     // let flow_invalidation = "default-provider-invalidation-flow";
     // not used at the moment
@@ -179,7 +179,7 @@ async fn create_property() {
 #[tokio::test]
 async fn test_validate_client() -> anyhow::Result<()> {
     let conf = setup_authentik()?;
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     let name = "air";
     // public client
     let client_config = OIDCConfig {
@@ -199,7 +199,7 @@ async fn test_validate_client() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_patch_provider() -> anyhow::Result<()> {
     let conf = setup_authentik()?;
-    let token = &conf.service_account_token;
+    let token = &conf.authentik_service_api_key;
     let name = "dark";
     // public client
     let client_config = OIDCConfig {

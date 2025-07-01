@@ -25,24 +25,26 @@ pub async fn generate_provider_values(
     let mapping = FlowPropertymapping::new(conf, token).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    // only one redirect url is possible
     let mut json = json!({
         "name": client_id,
         "client_id": client_id,
         "authorization_flow": mapping.authorization_flow,
-        "invalidation_flow": mapping.invalidation_flow
-    });
-    /*
+        "invalidation_flow": mapping.invalidation_flow,
+        "sub_mode": "user_email",
         "property_mappings": [
-            mapping.property_mapping["web-origins"],
-            mapping.property_mapping["acr"],
-            mapping.property_mapping["profile"],
-            mapping.property_mapping["roles"],
-            mapping.property_mapping["email"],
-            mapping.property_mapping["microprofile-jwt"],
-            mapping.property_mapping["groups"]
-        ]
-         */
+            mapping.property_mapping["allgroups"],
+            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'openid'"],
+            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'profile'"],
+            mapping.property_mapping["authentik default OAuth Mapping: Proxy outpost"],
+            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'email'"],
+            ],
+        "jwt_federation_sources": [
+            mapping.federation_mapping["DKFZ Account"],
+            mapping.federation_mapping["Helmholtz ID"],
+            mapping.federation_mapping["Login with Institutional Account (DFN-AAI)"],
+            mapping.federation_mapping["Local Account"],
+        ],
+    });
 
     if !oidc_client_config.redirect_urls.is_empty() {
         let res_urls: Vec<RedirectURIS> = oidc_client_config
@@ -75,17 +77,11 @@ pub async fn generate_provider_values(
 }
 
 pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfig) -> Option<i64> {
-    //let provider_search = "api/v3/providers/all/?ordering=name&page=1&page_size=20&search=";
-    let base_url = conf.authentik_url.join("api/v3/providers/all/").unwrap();
-    let query_url = Url::parse_with_params(
-        base_url.as_str(),
-        &[("ordering", "name"), ("page", "1"), ("page_size", "20")],
-    )
-    .unwrap();
-
+    //let provider_search = "api/v3/providers/all/?name=...";
+    let query_url = conf.authentik_url.join("api/v3/providers/oauth2/").unwrap();
     let target_value: serde_json::Value = CLIENT
         .get(query_url.to_owned())
-        .query(&[("search", &client_id)])
+        .query(&[("name", &client_id)])
         .bearer_auth(token)
         .send()
         .await
@@ -93,8 +89,8 @@ pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfi
         .json()
         .await
         .ok()?;
-    debug!("Value search key {client_id}: {:?}", &target_value);
-    // pk is the uuid for this result
+    debug!("Value search key {client_id} provider: {:?}", &target_value);
+    // pk is the id for this result
     Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
@@ -167,6 +163,73 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         && redirct_url_match()
 }
 
+pub async fn patch_provider(
+    id: i64,
+    federation_id: i64,
+    token: &str, 
+    conf: &AuthentikConfig
+) -> anyhow::Result<()> {
+    //"api/v3/providers/oauth2/70/";
+    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id)).unwrap();
+    let json = json!({
+        "jwt_federation_providers": [
+                federation_id,
+            ],
+    });
+    let target_value: serde_json::Value = CLIENT
+        .patch(query_url.to_owned())
+        .bearer_auth(token)
+        .json(&json)
+        .send()
+        .await?
+        .json()
+        .await?;
+    debug!("Value search key {id}: set {federation_id}");
+    // pk is the uuid for this result
+    match target_value
+        .get("jwt_federation_providers")
+        .and_then(|v| v.get(0))
+        .and_then(|v| v.as_i64()) {
+        Some(_jwt_federation_providers) => {
+            Ok(())
+        },
+        None => { anyhow::bail!("No jwt federation_providers found") },
+    }
+}
+
+pub async fn check_set_federation_id(
+    client_name: &str,
+    provider_id: i64,
+    token: &str,
+    conf: &AuthentikConfig,
+    oidc_client_config: &OIDCConfig,
+) -> anyhow::Result<()> {
+    if oidc_client_config.is_public {
+        // public
+        if let Some(private_id) = get_provider_id(
+            &oidc_client_config.flipped_client_type(client_name),
+            token,
+            conf
+        ).await {
+            patch_provider(private_id, provider_id, token, conf).await
+        } else {
+            debug!("no jet found for '{}' federation_id", client_name);
+            Ok(())
+        }
+    } else {
+        // private
+        if let Some(public_id) = get_provider_id(
+            &oidc_client_config.flipped_client_type(client_name), 
+            token, 
+            conf
+        ).await {
+            patch_provider(provider_id, public_id, token, conf).await
+        } else {
+            debug!("No provider found for '{}' federation_id", client_name);
+            Ok(())
+        }
+    }
+}
 fn is_regex_uri(uri: &str) -> bool {
     let regex_chars = ['^', '$', '*'];
     uri.chars().any(|c| regex_chars.contains(&c))
