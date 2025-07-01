@@ -5,4 +5,4 @@ Cargo.lock
 /dev-gitlab/cache
 /dev-gitlab/.env
 .idea/
-.cargo/
+.cargo/*
