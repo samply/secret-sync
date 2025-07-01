@@ -20,9 +20,8 @@ pub async fn generate_provider_values(
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
-    token: &str,
 ) -> anyhow::Result<Value> {
-    let mapping = FlowPropertymapping::new(conf, token).await?;
+    let mapping = FlowPropertymapping::new(conf).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
     let mut json = json!({
@@ -76,13 +75,16 @@ pub async fn generate_provider_values(
     Ok(json)
 }
 
-pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfig) -> Option<i64> {
+pub async fn get_provider_id(
+    client_id: &str,
+    conf: &AuthentikConfig
+) -> Option<i64> {
     //let provider_search = "api/v3/providers/all/?name=...";
     let query_url = conf.authentik_url.join("api/v3/providers/oauth2/").unwrap();
     let target_value: serde_json::Value = CLIENT
         .get(query_url.to_owned())
         .query(&[("name", &client_id)])
-        .bearer_auth(token)
+        .bearer_auth(&conf.authentik_service_api_key)
         .send()
         .await
         .ok()?
@@ -96,11 +98,9 @@ pub async fn get_provider_id(client_id: &str, token: &str, conf: &AuthentikConfi
 
 pub async fn get_provider(
     client_id: &str,
-    token: &str,
-    oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<Value> {
-    let res = get_provider_id(client_id, token, conf).await;
+    let res = get_provider_id(client_id, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
         .authentik_url
@@ -108,7 +108,7 @@ pub async fn get_provider(
         .context("Error parsing provider")?;
     CLIENT
         .get(base_url)
-        .bearer_auth(token)
+        .bearer_auth(&conf.authentik_service_api_key)
         .send()
         .await
         .context("No Response")?
@@ -118,15 +118,14 @@ pub async fn get_provider(
 }
 
 pub async fn compare_provider(
-    token: &str,
     client_id: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     secret: &str,
 ) -> anyhow::Result<bool> {
-    let client = get_provider(client_id, token, oidc_client_config, conf).await?;
+    let client = get_provider(client_id, conf).await?;
     let wanted_client =
-        generate_provider_values(client_id, oidc_client_config, secret, conf, token).await?;
+        generate_provider_values(client_id, oidc_client_config, secret, conf).await?;
     debug!("{:#?}", client);
     debug!("{:#?}", wanted_client);
     Ok(provider_configs_match(&client, &wanted_client))
@@ -166,7 +165,6 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
 pub async fn patch_provider(
     id: i64,
     federation_id: i64,
-    token: &str, 
     conf: &AuthentikConfig
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
@@ -178,18 +176,16 @@ pub async fn patch_provider(
     });
     let target_value: serde_json::Value = CLIENT
         .patch(query_url.to_owned())
-        .bearer_auth(token)
+        .bearer_auth(&conf.authentik_service_api_key)
         .json(&json)
         .send()
         .await?
         .json()
         .await?;
     debug!("Value search key {id}: set {federation_id}");
-    // pk is the uuid for this result
+    // contains at the moment one id
     match target_value
-        .get("jwt_federation_providers")
-        .and_then(|v| v.get(0))
-        .and_then(|v| v.as_i64()) {
+        ["jwt_federation_providers"][0].as_i64() {
         Some(_jwt_federation_providers) => {
             Ok(())
         },
@@ -200,7 +196,6 @@ pub async fn patch_provider(
 pub async fn check_set_federation_id(
     client_name: &str,
     provider_id: i64,
-    token: &str,
     conf: &AuthentikConfig,
     oidc_client_config: &OIDCConfig,
 ) -> anyhow::Result<()> {
@@ -208,10 +203,9 @@ pub async fn check_set_federation_id(
         // public
         if let Some(private_id) = get_provider_id(
             &oidc_client_config.flipped_client_type(client_name),
-            token,
             conf
         ).await {
-            patch_provider(private_id, provider_id, token, conf).await
+            patch_provider(private_id, provider_id, conf).await
         } else {
             debug!("no jet found for '{}' federation_id", client_name);
             Ok(())
@@ -219,11 +213,10 @@ pub async fn check_set_federation_id(
     } else {
         // private
         if let Some(public_id) = get_provider_id(
-            &oidc_client_config.flipped_client_type(client_name), 
-            token, 
+            &oidc_client_config.flipped_client_type(client_name),
             conf
         ).await {
-            patch_provider(provider_id, public_id, token, conf).await
+            patch_provider(provider_id, public_id, conf).await
         } else {
             debug!("No provider found for '{}' federation_id", client_name);
             Ok(())

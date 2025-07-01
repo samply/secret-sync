@@ -6,7 +6,7 @@ use crate::CLIENT;
 
 use super::AuthentikConfig;
 
-pub async fn create_groups(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
+pub async fn create_groups(name: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
     let capitalize = |s: &str| {
         let mut chrs = s.chars();
         chrs.next()
@@ -17,15 +17,15 @@ pub async fn create_groups(name: &str, token: &str, conf: &AuthentikConfig) -> a
     };
     let name = capitalize(name);
     for group in &conf.authentik_groups_per_bh {
-        post_group(&group.replace('#', &name), token, conf).await?;
+        post_group(&group.replace('#', &name), conf).await?;
     }
     Ok(())
 }
 
-pub async fn post_group(name: &str, token: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
+pub async fn post_group(name: &str, conf: &AuthentikConfig) -> anyhow::Result<()> {
     let res = CLIENT
         .post(conf.authentik_url.join("api/v3/core/groups/")?)
-        .bearer_auth(token)
+        .bearer_auth(&conf.authentik_service_api_key)
         .json(&json!({
             "name": name
         }))
