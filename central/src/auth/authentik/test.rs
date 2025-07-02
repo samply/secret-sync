@@ -41,7 +41,7 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     ))
 }
 
-//#[ignore = "Requires setting up a authentik"]
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let  conf = setup_authentik()?;
