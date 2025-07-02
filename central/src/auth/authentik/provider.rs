@@ -29,10 +29,8 @@ pub async fn generate_provider_values(
         "authorization_flow": mapping.authorization_flow,
         "invalidation_flow": mapping.invalidation_flow,
         "sub_mode": "user_email",
-        "property_mappings": [
-            ],
-        "jwt_federation_sources": [
-        ],
+        "property_mappings": mapping.property_mapping,
+        "jwt_federation_sources": mapping.federation_mapping,
     });
 
     if !oidc_client_config.redirect_urls.is_empty() {

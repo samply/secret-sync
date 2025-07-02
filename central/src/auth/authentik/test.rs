@@ -21,7 +21,7 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     let token = "".to_owned();
     Ok((
         AuthentikConfig {
-            authentik_url: "".parse().unwrap(),
+            authentik_url: "http://localhost:9000".parse().unwrap(),
             authentik_service_api_key: token.clone(),
             authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
             authentik_property_names: vec![
@@ -41,7 +41,7 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     ))
 }
 
-#[ignore = "Requires setting up a authentik"]
+//#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
     let  conf = setup_authentik()?;
@@ -61,9 +61,9 @@ async fn test_create_client() -> anyhow::Result<()> {
     else {
         panic!("Not created or existed")
     };
-    
+
     let provider_pk = get_provider(
-        &client_config.client_type(name), 
+        &client_config.client_type(name),
         &conf
     )
         .await?
@@ -247,6 +247,7 @@ async fn get_access_test() {
     dbg!(&t);
     assert!(!t.access_token.is_empty());
 }
+#[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn provider_check() {
     let conf = setup_authentik().expect("Cannot setup authentik as test");
