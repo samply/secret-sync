@@ -4,8 +4,7 @@ mod provider;
 mod test;
 
 use crate::auth::generate_secret;
-use std::{collections::HashMap, sync::Mutex};
-use std::collections::HashSet;
+use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
 use app::{check_app_result, compare_app_provider, get_application};
@@ -15,7 +14,7 @@ use group::create_groups;
 use provider::{compare_provider, generate_provider_values, get_provider, get_provider_id};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
 use tracing::{debug, info};
 use crate::auth::authentik::provider::check_set_federation_id;
@@ -30,9 +29,9 @@ pub struct AuthentikConfig {
     pub authentik_service_api_key: String,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_groups_per_bh: Vec<String>,
-    #[clap(long, env)]
+    #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_property_names: Vec<String>,
-    #[clap(long, env)]
+    #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_federation_names: Vec<String>,
 }
 
@@ -40,8 +39,8 @@ pub struct AuthentikConfig {
 pub struct FlowPropertymapping {
     pub authorization_flow: String,
     pub invalidation_flow: String,
-    pub property_mapping: HashMap<String, String>,
-    pub federation_mapping: HashMap<String, String>
+    pub property_mapping: Vec<String>,
+    pub federation_mapping: Vec<String>
 }
 impl FlowPropertymapping {
     async fn new(conf: &AuthentikConfig) -> reqwest::Result<Self> {
@@ -51,19 +50,8 @@ impl FlowPropertymapping {
         }
         let flow_auth = "Authorize Application";
         let flow_invalidation = "Logged out of application";
-        let property_keys = vec![
-            "allgroups",
-            "authentik default OAuth Mapping: OpenID 'openid'",
-            "authentik default OAuth Mapping: OpenID 'profile'",
-            "authentik default OAuth Mapping: Proxy outpost",
-            "authentik default OAuth Mapping: OpenID 'email'",
-        ];
-        let jwt_federation_sources = vec![
-            "DKFZ Account",
-            "Helmholtz ID",
-            "Login with Institutional Account (DFN-AAI)",
-            "Local Account"
-        ];
+        let property_keys = conf.authentik_property_names.clone();
+        let jwt_federation_sources = conf.authentik_federation_names.clone();
         //let flow_url = "/api/v3/flows/instances/?name=...";
         //let property_url = "/api/v3/propertymappings/all/?name=...";
         let flow_url = conf
@@ -248,15 +236,14 @@ async fn get_uuid(target_url: &Url, search_name: &str, conf: &AuthentikConfig) -
 
 async fn get_mappings_uuids(
     target_url: &Url,
-    search_key: Vec<&str>,
+    search_key: Vec<String>,
     conf: &AuthentikConfig,
-) -> HashMap<String, String> {
+) -> Vec<String> {
     // TODO: async iter to collect
-    let mut result: HashMap<String, String> = HashMap::new();
+    let mut result: Vec<String> = vec![];
     for key in search_key {
-        result.insert(
-            key.to_string(),
-            get_uuid(target_url, key, conf)
+        result.push(
+            get_uuid(target_url, &key, conf)
                 .await
                 .expect(&format!("Property: {:?}", key)),
         );

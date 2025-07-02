@@ -1,5 +1,4 @@
 use beam_lib::reqwest::{self, Response, StatusCode};
-use reqwest::{Client, Url};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::i64;
@@ -8,8 +7,7 @@ use tracing::{debug, info};
 use crate::CLIENT;
 
 use super::{
-    get_uuid,
-    provider::{compare_provider, get_provider, get_provider_id, RedirectURIS},
+    provider::{compare_provider, get_provider_id},
     AuthentikConfig,
 };
 

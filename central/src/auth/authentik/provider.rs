@@ -1,5 +1,4 @@
 use anyhow::{Context, Ok};
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
@@ -31,17 +30,8 @@ pub async fn generate_provider_values(
         "invalidation_flow": mapping.invalidation_flow,
         "sub_mode": "user_email",
         "property_mappings": [
-            mapping.property_mapping["allgroups"],
-            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'openid'"],
-            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'profile'"],
-            mapping.property_mapping["authentik default OAuth Mapping: Proxy outpost"],
-            mapping.property_mapping["authentik default OAuth Mapping: OpenID 'email'"],
             ],
         "jwt_federation_sources": [
-            mapping.federation_mapping["DKFZ Account"],
-            mapping.federation_mapping["Helmholtz ID"],
-            mapping.federation_mapping["Login with Institutional Account (DFN-AAI)"],
-            mapping.federation_mapping["Local Account"],
         ],
     });
 
@@ -168,7 +158,7 @@ pub async fn patch_provider(
     conf: &AuthentikConfig
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
-    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id)).unwrap();
+    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id))?;
     let json = json!({
         "jwt_federation_providers": [
                 federation_id,
@@ -205,6 +195,7 @@ pub async fn check_set_federation_id(
             &oidc_client_config.flipped_client_type(client_name),
             conf
         ).await {
+            debug!("public");
             patch_provider(private_id, provider_id, conf).await
         } else {
             debug!("no jet found for '{}' federation_id", client_name);
@@ -216,6 +207,7 @@ pub async fn check_set_federation_id(
             &oidc_client_config.flipped_client_type(client_name),
             conf
         ).await {
+            debug!("private");
             patch_provider(provider_id, public_id, conf).await
         } else {
             debug!("No provider found for '{}' federation_id", client_name);
@@ -223,6 +215,7 @@ pub async fn check_set_federation_id(
         }
     }
 }
+
 fn is_regex_uri(uri: &str) -> bool {
     let regex_chars = ['^', '$', '*'];
     uri.chars().any(|c| regex_chars.contains(&c))
