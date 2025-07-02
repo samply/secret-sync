@@ -66,6 +66,10 @@ services:
       - AUTHENTIK_URL=http://authentik:9000
       # API Access Token 
       - SERVICE_ACCOUNT_TOKEN=secret_token
+      # Proppertymapping names to set as uuid
+      - AUTHENTIK_PROPERTY_NAMES="allgroups,defauld groups"
+      # Federation source names to set as uuid 
+      - AUTHENTIK_FEDERATION_NAMES="Local Account,Example Accounts"
 
       # Optional GitLab parameters. More than one GitLab server can be configured by using different prefixes like "verbis" in this example.
       # The base URL for API calls, e.g. "https://gitlab.com/".
