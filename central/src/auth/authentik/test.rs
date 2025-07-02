@@ -9,34 +9,219 @@ use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
-
 use tracing::debug;
 use tracing::field::debug;
-#[derive(Deserialize, Serialize, Debug)]
-struct Token {
-    access_token: String,
-}
 
 #[cfg(test)]
-pub fn setup_authentik() -> reqwest::Result<(String, AuthentikConfig)> {
-    //let token = get_access_token_via_admin_login().await?;
+pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .try_init();
     let token = "".to_owned();
     Ok((
-        token,
         AuthentikConfig {
             authentik_url: "http://localhost:9000".parse().unwrap(),
-            authentik_id: "unused in tests".into(),
-            authentik_secret: "unused in tests".into(),
+            authentik_service_api_key: token.clone(),
             authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
-        },
+            authentik_property_names: vec![
+                "allgroups".into(),
+                "authentik default OAuth Mapping: OpenID 'openid'".into(),
+                "authentik default OAuth Mapping: OpenID 'profile'".into(),
+                "authentik default OAuth Mapping: Proxy outpost".into(),
+                "authentik default OAuth Mapping: OpenID 'email'".into(),
+            ],
+            authentik_federation_names: vec![
+                "DKFZ Account".into(),
+                "Helmholtz ID".into(),
+                "Login with Institutional Account (DFN-AAI)".into(),
+                "Local Account".into()
+            ],
+        }
     ))
 }
 
-// test is working
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_create_client() -> anyhow::Result<()> {
+    let  conf = setup_authentik()?;
+    let name = "secondtest";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+            "^http://dkfz.verbis/*".into(),
+        ],
+    };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
+        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+    else {
+        panic!("Not created or existed")
+    };
+
+    let provider_pk = get_provider(
+        &client_config.client_type(name),
+        &conf
+    )
+        .await?
+        .get("pk")
+        .and_then(|v| v.as_i64())
+        .unwrap();
+    // private client
+    let client_config = OIDCConfig {
+        is_public: false,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+            "^http://dkfz.verbis/*".into(),
+        ],
+    };
+    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
+        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+    else {
+        panic!("Not created or existed")
+    };
+
+    Ok(())
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn group_test() -> anyhow::Result<()> {
+    let conf = setup_authentik()?;
+    create_groups("next2", &conf).await
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_flow() {
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let test_key = "authentication_flow";
+    let query_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
+    let res = get_uuid(&query_url, test_key, &conf).await;
+    debug!(res);
+    match res {
+        Some(uuid) => {
+            debug!("Found flow id: {}", uuid);
+            assert!(!uuid.is_empty(), "empty");
+        }
+        None => {
+            debug!("Result flow {} not found", test_key);
+        }
+    }
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_property() {
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let test_key = "";
+    let query_url = conf
+        .authentik_url
+        .join("api/v3/propertymappings/all/")
+        .unwrap();
+    let res = get_uuid(&query_url, test_key, &conf).await;
+    //debug!("Result Property for {test_key}: {:#?}", res);
+    debug!("{:?}", query_url);
+    debug!("{:?}", res);
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn create_property() {
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    // let flow_auth = "authorization_flow";
+    // let flow_invalidation = "default-provider-invalidation-flow";
+    // not used at the moment
+    let property_keys = conf.authentik_property_names;
+    for key in property_keys {
+        let ext = "return{}".to_owned();
+        let json_property = json!({
+        "name": key,
+        "expression": ext
+        });
+        let property_url = "api/v3/propertymappings/source/oauth/";
+        let res = CLIENT
+            .post(conf.authentik_url.join(property_url).expect("No valid Url"))
+            .bearer_auth(&conf.authentik_service_api_key)
+            .json(&json_property)
+            .send()
+            .await
+            .expect("no response");
+        tracing::debug!("Result: {:#?}", res);
+    }
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_validate_client() -> anyhow::Result<()> {
+    let conf = setup_authentik()?;
+    let name = "air";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+        ],
+    };
+    let res = compare_app_provider(name, &client_config, "", &conf).await?;
+    debug!("Validate: {res}");
+    Ok(())
+}
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_patch_provider() -> anyhow::Result<()> {
+    let conf = setup_authentik()?;
+    let name = "dark";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: false,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+        ],
+    };
+    let pk_id = get_provider_id(name, &conf).await.unwrap();
+    let generated_provider =
+        generate_provider_values(name, &client_config, "", &conf).await?;
+    debug!("{:#?}", generated_provider);
+
+    let res = CLIENT
+        .patch(
+            conf.authentik_url
+                .join(&format!("api/v3/providers/oauth2/{}/", pk_id))?,
+        )
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(&generated_provider)
+        .send()
+        .await?
+        .status()
+        .is_success()
+        .then_some(SecretResult::AlreadyExisted("test".to_owned()))
+        .expect("We know the provider already exists so updating should be successful");
+    debug!("Updated:  {:#?}", res);
+    debug!("Provider {name} updated");
+    debug!(
+        "App now: {:#?}",
+        get_application(name, &conf).await?
+    );
+    Ok(())
+}
+
+
+#[derive(Deserialize, Serialize, Debug)]
+struct Token {
+    access_token: String,
+}
+// test to verifie created app and provider
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn get_access_test() {
@@ -62,197 +247,15 @@ async fn get_access_test() {
     dbg!(&t);
     assert!(!t.access_token.is_empty());
 }
-
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
-async fn test_create_client() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
-    let name = "tree";
-    // public client
-    let client_config = OIDCConfig {
-        is_public: true,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
-    else {
-        panic!("Not created or existed")
-    };
-    let provider_pk = get_provider(name, &token, &client_config, &conf)
-        .await?
+async fn provider_check() {
+    let conf = setup_authentik().expect("Cannot setup authentik as test");
+    let name = "Provider for test-david-j Public";
+    let provider_pk = get_provider(name, &conf)
+        .await
+        .expect("Cannot get provider data")
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
-
-    // private client
-    let client_config = OIDCConfig {
-        is_public: false,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(&token, name, &client_config, &conf).await?)
-    else {
-        panic!("Not created or existed")
-    };
-
-    Ok(())
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn group_test() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
-    create_groups("next2", &token, &conf).await
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn test_flow() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
-    let test_key = "authentication_flow";
-    let base_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
-    let query_url = Url::parse_with_params(
-        base_url.as_str(),
-        &[("orderung", "slug"), ("page", "1"), ("page_size", "20")],
-    )
-    .unwrap();
-    //let flow_url = "api/v3/flows/instances/?ordering=slug&page=1&page_size=20&search=";
-    let res = get_uuid(&query_url, &token, test_key).await;
-    debug!(res);
-    match res {
-        Some(uuid) => {
-            debug!("Found flow id: {}", uuid);
-            assert!(!uuid.is_empty(), "empty");
-        }
-        None => {
-            debug!("Result flow {} not found", test_key);
-        }
-    }
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn test_property() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
-    let test_key = "web-origins";
-    let base_url = conf
-        .authentik_url
-        .join("api/v3/propertymappings/all/")
-        .unwrap();
-    let query_url = Url::parse_with_params(
-        base_url.as_str(),
-        &[
-            ("managed__isnull", "true"),
-            ("ordering", "name"),
-            ("page", "1"),
-            ("page_size", "20"),
-        ],
-    )
-    .unwrap();
-    //let flow_url = "api/v3/propertymappings/all/?managed__isnull=true&ordering=name&page=1&page_size=20&search=";
-    let res = get_uuid(&query_url, &token, test_key).await;
-    //debug!("Result Property for {test_key}: {:#?}", res);
-    debug!("{:?}", query_url);
-    debug!("{:?}", res);
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn create_property() {
-    let (token, conf) = setup_authentik().expect("Cannot setup authentik as test");
-    // let flow_auth = "authorization_flow";
-    // let flow_invalidation = "default-provider-invalidation-flow";
-    let property_keys = vec![
-        "web-origins",
-        "acr",
-        "profile",
-        "roles",
-        "email",
-        "microprofile-jwt",
-        "groups",
-    ];
-    for key in property_keys {
-        let ext = "return{}".to_owned();
-        let json_property = json!({
-        "name": key,
-        "expression": ext
-        });
-        let property_url = "api/v3/propertymappings/source/oauth/";
-        let res = CLIENT
-            .post(conf.authentik_url.join(property_url).expect("No valid Url"))
-            .bearer_auth(&token)
-            .json(&json_property)
-            .send()
-            .await
-            .expect("no response");
-        tracing::debug!("Result: {:#?}", res);
-    }
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn test_validate_client() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
-    let name = "air";
-    // public client
-    let client_config = OIDCConfig {
-        is_public: true,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let res = compare_app_provider(&token, name, &client_config, "", &conf).await?;
-    debug!("Validate: {res}");
-    Ok(())
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
-async fn test_patch_provider() -> anyhow::Result<()> {
-    let (token, conf) = setup_authentik()?;
-    let name = "dark";
-    // public client
-    let client_config = OIDCConfig {
-        is_public: false,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let pk_id = get_provider_id(name, &token, &conf).await.unwrap();
-    let generated_provider =
-        generate_provider_values(name, &client_config, "", &conf, &token).await?;
-    debug!("{:#?}", generated_provider);
-
-    let res = CLIENT
-        .patch(
-            conf.authentik_url
-                .join(&format!("api/v3/providers/oauth2/{}/", pk_id))?,
-        )
-        .bearer_auth(&token)
-        .json(&generated_provider)
-        .send()
-        .await?
-        .status()
-        .is_success()
-        .then_some(SecretResult::AlreadyExisted("test".to_owned()))
-        .expect("We know the provider already exists so updating should be successful");
-    debug!("Updated:  {:#?}", res);
-    debug!("Provider {name} updated");
-    debug!(
-        "App now: {:#?}",
-        get_application(name, &token, &conf).await?
-    );
-    Ok(())
 }
