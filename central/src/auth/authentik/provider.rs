@@ -23,9 +23,9 @@ pub async fn generate_provider_values(
     let mapping = FlowPropertymapping::new(conf).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    let name = format!("provider for {}", client_id);
+    let name = format!("Provider for {}", client_id); // not consistent at the moment
     let mut json = json!({
-        "name": name,
+        "name": client_id,
         "client_id": client_id,
         "authorization_flow": mapping.authorization_flow,
         "invalidation_flow": mapping.invalidation_flow,
@@ -224,7 +224,7 @@ fn convert_to_regex_url(uri: &str) -> String {
     let mut result_uri = String::from("^");
     for ch in uri.chars() {
         match ch { 
-            '.' => result_uri.push_str(r"\\."),
+            '.' => result_uri.push_str(r"\."),
             '*' => result_uri.push_str(".*"),
             '?' => result_uri.push_str("."),
             _ => result_uri.push(ch),
