@@ -23,8 +23,9 @@ pub async fn generate_provider_values(
     let mapping = FlowPropertymapping::new(conf).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
+    let name = format!("provider for {}", client_id);
     let mut json = json!({
-        "name": client_id,
+        "name": name,
         "client_id": client_id,
         "authorization_flow": mapping.authorization_flow,
         "invalidation_flow": mapping.invalidation_flow,
@@ -39,7 +40,7 @@ pub async fn generate_provider_values(
             .iter()
             .map(|url| {
                 let (matching_mode, url) = if is_regex_uri(url) {
-                    ("regex".to_owned(), url.to_owned())
+                    ("regex".to_owned(), convert_to_regex_url(url))
                 } else {
                     ("strict".to_owned(), url.to_owned())
                 };
@@ -215,6 +216,20 @@ pub async fn check_set_federation_id(
 }
 
 fn is_regex_uri(uri: &str) -> bool {
-    let regex_chars = ['^', '$', '*'];
+    let regex_chars = ['*'];
     uri.chars().any(|c| regex_chars.contains(&c))
+}
+
+fn convert_to_regex_url(uri: &str) -> String {
+    let mut result_uri = String::from("^");
+    for ch in uri.chars() {
+        match ch { 
+            '.' => result_uri.push_str(r"\\."),
+            '*' => result_uri.push_str(".*"),
+            '?' => result_uri.push_str("."),
+            _ => result_uri.push(ch),
+        }
+    }
+    result_uri.push_str("$");
+    result_uri
 }
