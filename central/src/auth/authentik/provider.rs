@@ -23,7 +23,6 @@ pub async fn generate_provider_values(
     let mapping = FlowPropertymapping::new(conf).await?;
 
     let secret = (!oidc_client_config.is_public).then_some(secret);
-    let name = format!("Provider for {}", client_id); // not consistent at the moment
     let mut json = json!({
         "name": client_id,
         "client_id": client_id,
