@@ -1,9 +1,8 @@
+#[allow(unused_imports)]
 use crate::auth::authentik::app::{check_app_result, compare_app_provider, generate_app_values};
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
-use crate::auth::authentik::{
-    combine_app_provider, get_application, get_uuid, validate_application, AuthentikConfig,
-};
+use crate::auth::authentik::{create_app_provider, get_application, get_uuid, validate_application, AuthentikConfig};
 use crate::CLIENT;
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -57,7 +56,7 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+        dbg!(create_app_provider(name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };
@@ -81,7 +80,7 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+        dbg!(create_app_provider(name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };

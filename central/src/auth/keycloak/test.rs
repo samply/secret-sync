@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::auth::keycloak::client::{
     client_configs_match, compare_clients, generate_client, get_client, post_client,
 };

@@ -3,7 +3,6 @@ mod group;
 mod provider;
 mod test;
 
-use crate::auth::generate_secret;
 use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
@@ -11,7 +10,7 @@ use app::{check_app_result, compare_app_provider, get_application};
 use beam_lib::reqwest::{self, Url};
 use clap::Parser;
 use group::create_groups;
-use provider::{compare_provider, generate_provider_values, get_provider, get_provider_id};
+use provider::{compare_provider, generate_provider_values, get_provider};
 use reqwest::{Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -101,7 +100,7 @@ pub async fn create_app_provider(
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
     let client_id = oidc_client_config.client_type(name);
-    let secret = oidc_client_config.secret_type(name);
+    let secret = oidc_client_config.secret_type();
     let generated_provider: Value =
         generate_provider_values(&client_id, oidc_client_config, &secret, conf).await?;
     debug!("Provider Values: {:#?}", generated_provider);

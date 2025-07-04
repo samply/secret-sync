@@ -15,7 +15,7 @@ impl OIDCConfig {
     pub fn client_type(&self, name: &str) -> String {
         format!("{}-{}", name, if self.is_public { "public" } else { "private" })
     }
-    pub fn secret_type(&self, name: &str) -> String {
+    pub fn secret_type(&self) -> String {
         if !self.is_public {
             generate_secret()
         } else {

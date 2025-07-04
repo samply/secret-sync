@@ -1,11 +1,11 @@
 use crate::{
-    auth::{generate_secret, keycloak::add_service_account_roles},
+    auth::{keycloak::add_service_account_roles},
     CLIENT,
 };
 use anyhow::bail;
 use beam_lib::reqwest::{self, StatusCode};
 use serde_json::{json, Value};
-use shared::{OIDCConfig, SecretResult};
+use shared::{generate_secret, OIDCConfig, SecretResult};
 
 use super::{create_groups, KeyCloakConfig};
 
@@ -120,11 +120,7 @@ pub async fn post_client(
     oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> anyhow::Result<SecretResult> {
-    let secret = if !oidc_client_config.is_public {
-        generate_secret()
-    } else {
-        String::with_capacity(0)
-    };
+    let secret = oidc_client_config.secret_type();
     let generated_client = generate_client(name, oidc_client_config, &secret);
     let res = CLIENT
         .post(&format!(
