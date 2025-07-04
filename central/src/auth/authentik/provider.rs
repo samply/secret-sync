@@ -34,21 +34,25 @@ pub async fn generate_provider_values(
     });
 
     if !oidc_client_config.redirect_urls.is_empty() {
-        let res_urls: Vec<RedirectURIS> = oidc_client_config
-            .redirect_urls
-            .iter()
-            .map(|url| {
-                let (matching_mode, url) = if is_regex_uri(url) {
-                    ("regex".to_owned(), convert_to_regex_url(url))
-                } else {
-                    ("strict".to_owned(), url.to_owned())
-                };
-                RedirectURIS {
-                    matching_mode,
-                    url,
-                }
-            })
-            .collect();
+        let mut res_urls: Vec<RedirectURIS> = Vec::new();
+        for url in &oidc_client_config.redirect_urls {
+            if is_regex_uri(url) {
+                res_urls.push(RedirectURIS {
+                    matching_mode: "strict".to_owned(),
+                    url: convert_to_strict_for_regex(url),
+                });
+                res_urls.push(RedirectURIS {
+                    matching_mode: "regex".to_owned(),
+                    url: convert_to_regex_url(url),
+                });
+            } else {
+                res_urls.push(RedirectURIS {
+                    matching_mode: "strict".to_owned(),
+                    url: url.to_owned(),
+                });
+            }
+        }
+     
         json["redirect_uris"] = json!(res_urls);
     }
 
@@ -59,6 +63,9 @@ pub async fn generate_provider_values(
     };
     if let Some(secret) = secret {
         json["client_secret"] = json!(secret);
+    }
+    if oidc_client_config.is_public {
+        json["signing_key"] = json!(mapping.signing_key);
     }
     Ok(json)
 }
@@ -215,8 +222,7 @@ pub async fn check_set_federation_id(
 }
 
 fn is_regex_uri(uri: &str) -> bool {
-    let regex_chars = ['*'];
-    uri.chars().any(|c| regex_chars.contains(&c))
+    uri.ends_with('*')
 }
 
 fn convert_to_regex_url(uri: &str) -> String {
@@ -230,5 +236,16 @@ fn convert_to_regex_url(uri: &str) -> String {
         }
     }
     result_uri.push_str("$");
+    result_uri
+}
+
+fn convert_to_strict_for_regex(uri: &str) -> String {
+    let mut result_uri = uri.to_owned();
+    if result_uri.ends_with('*') {
+        result_uri.pop();
+        if result_uri.ends_with("/") {
+            result_uri.pop();
+        }
+    }
     result_uri
 }
