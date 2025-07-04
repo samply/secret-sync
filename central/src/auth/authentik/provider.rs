@@ -7,7 +7,7 @@ use tracing::debug;
 
 use crate::CLIENT;
 
-use super::{AuthentikConfig, FlowPropertymapping};
+use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
@@ -183,13 +183,13 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         && redirct_url_match()
 }
 
-pub async fn patch_provider(
-    id: i64,
+pub async fn patch_provider_federation(
+    provider_id: i64,
     federation_id: i64,
     conf: &AuthentikConfig
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
-    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id))?;
+    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", provider_id))?;
     let json = json!({
         "jwt_federation_providers": [
                 federation_id,
@@ -203,7 +203,7 @@ pub async fn patch_provider(
         .await?
         .json()
         .await?;
-    debug!("Value search key {id}: set {federation_id}");
+    debug!("Value search key {provider_id}: set {federation_id}");
     // contains at the moment one id
     match target_value
         ["jwt_federation_providers"][0].as_i64() {
@@ -223,11 +223,11 @@ pub async fn check_set_federation_id(
     if oidc_client_config.is_public {
         // public
         if let Some(private_id) = get_provider_id(
-            &oidc_client_config.flipped_client_type(client_name),
+            &flipped_client_type(oidc_client_config, client_name),
             conf
         ).await {
             debug!("public");
-            patch_provider(private_id, provider_id, conf).await
+            patch_provider_federation(private_id, provider_id, conf).await
         } else {
             debug!("no jet found for '{}' federation_id", client_name);
             Ok(())
@@ -235,11 +235,11 @@ pub async fn check_set_federation_id(
     } else {
         // private
         if let Some(public_id) = get_provider_id(
-            &oidc_client_config.flipped_client_type(client_name),
+            &flipped_client_type(oidc_client_config, client_name),
             conf
         ).await {
             debug!("private");
-            patch_provider(provider_id, public_id, conf).await
+            patch_provider_federation(provider_id, public_id, conf).await
         } else {
             debug!("No provider found for '{}' federation_id", client_name);
             Ok(())

@@ -8,4 +8,3 @@ license = "Apache-2.0"
 
 [dependencies]
 serde = { workspace = true }
-rand = "0.9.1"

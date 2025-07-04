@@ -1,4 +1,5 @@
 mod client;
+
 mod test;
 
 use crate::CLIENT;

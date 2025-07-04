@@ -5,8 +5,8 @@ use crate::{
 use anyhow::bail;
 use beam_lib::reqwest::{self, StatusCode};
 use serde_json::{json, Value};
-use shared::{generate_secret, OIDCConfig, SecretResult};
-
+use shared::{OIDCConfig, SecretResult};
+use crate::auth::generate_secret;
 use super::{create_groups, KeyCloakConfig};
 
 pub async fn get_client(
@@ -120,7 +120,7 @@ pub async fn post_client(
     oidc_client_config: &OIDCConfig,
     conf: &KeyCloakConfig,
 ) -> anyhow::Result<SecretResult> {
-    let secret = oidc_client_config.secret_type();
+    let secret = generate_secret();
     let generated_client = generate_client(name, oidc_client_config, &secret);
     let res = CLIENT
         .post(&format!(

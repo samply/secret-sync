@@ -1,6 +1,7 @@
 mod app;
 mod group;
 mod provider;
+#[cfg(test)]
 mod test;
 
 use std::sync::Mutex;
@@ -17,6 +18,7 @@ use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
 use tracing::{debug, info};
 use crate::auth::authentik::provider::{check_set_federation_id, generate_provider, update_provider};
+use crate::auth::generate_secret;
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -99,8 +101,12 @@ pub async fn create_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    let client_id = oidc_client_config.client_type(name);
-    let secret = oidc_client_config.secret_type();
+    let client_id = client_type(oidc_client_config, name);
+    let secret = if !oidc_client_config.is_public {
+        generate_secret()
+    } else {
+        String::with_capacity(0)
+    };
     let generated_provider: Value =
         generate_provider_values(&client_id, oidc_client_config, &secret, conf).await?;
     debug!("Provider Values: {:#?}", generated_provider);
@@ -224,4 +230,12 @@ async fn get_mappings_uuids(
         );
     }
     result
+}
+
+pub fn client_type(oidc_client_config: &OIDCConfig, name: &str) -> String {
+    format!("{}-{}", name, if oidc_client_config.is_public { "public" } else { "private" })
+}
+//use case federation id 
+pub fn flipped_client_type(oidc_client_config: &OIDCConfig, name: &str) -> String {
+    format!("{}-{}", name, if oidc_client_config.is_public { "private" } else { "public" })
 }
