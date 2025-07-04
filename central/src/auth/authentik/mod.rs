@@ -39,6 +39,7 @@ pub struct AuthentikConfig {
 pub struct FlowPropertymapping {
     pub authorization_flow: String,
     pub invalidation_flow: String,
+    pub signing_key: String,
     pub property_mapping: Vec<String>,
     pub federation_mapping: Vec<String>
 }
@@ -50,6 +51,7 @@ impl FlowPropertymapping {
         }
         let flow_auth = "Authorize Application";
         let flow_invalidation = "Logged out of application";
+        let crypto_signing_key = "authentik_hs265";
         let property_keys = conf.authentik_property_names.clone();
         let jwt_federation_sources = conf.authentik_federation_names.clone();
         //let flow_url = "/api/v3/flows/instances/?name=...";
@@ -57,6 +59,10 @@ impl FlowPropertymapping {
         let flow_url = conf
             .authentik_url
             .join("api/v3/flows/instances/")
+            .unwrap();
+        let signing_key_url = conf
+            .authentik_url
+            .join("api/v3/crypto/certificatekeypairs/")
             .unwrap();
         let property_url = conf
             .authentik_url
@@ -74,10 +80,14 @@ impl FlowPropertymapping {
         let invalidation_flow = get_uuid(&flow_url, flow_invalidation, conf)
             .await
             .expect("No default flow present"); // flow uuid
+        let signing_key = get_uuid(&signing_key_url, crypto_signing_key, conf)
+            .await
+            .expect("No default crypto signing_key"); // crypto signing_key uuid
 
         let mapping = FlowPropertymapping {
             authorization_flow,
             invalidation_flow,
+            signing_key,
             property_mapping,
             federation_mapping
         };
