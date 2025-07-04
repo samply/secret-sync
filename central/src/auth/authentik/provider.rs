@@ -68,12 +68,32 @@ pub async fn generate_provider(
     generated_provider: &Value,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<Response> {
-    Ok(CLIENT
+    Ok(
+        CLIENT
         .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
         .bearer_auth(&conf.authentik_service_api_key)
         .json(generated_provider)
         .send()
-        .await?)
+        .await?
+    )
+}
+
+pub async fn update_provider(
+    provider_values: &Value,
+    client_id: &str,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(
+        CLIENT
+            .patch(conf.authentik_url.join(&format!(
+                "api/v3/providers/oauth2/{}/",
+                get_provider_id(&client_id, conf).await.expect("provider id have to be present")
+            ))?)
+            .bearer_auth(&conf.authentik_service_api_key)
+            .json(provider_values)
+            .send()
+            .await?
+    )
 }
 
 pub async fn get_provider_id(

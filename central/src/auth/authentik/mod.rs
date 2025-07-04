@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
 use tracing::{debug, info};
-use crate::auth::authentik::provider::{check_set_federation_id, generate_provider};
+use crate::auth::authentik::provider::{check_set_federation_id, generate_provider, update_provider};
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -163,14 +163,7 @@ pub async fn create_app_provider(
                     );
                 }
             } else {
-                let res = CLIENT
-                    .patch(conf.authentik_url.join(&format!(
-                        "api/v3/providers/oauth2/{}/",
-                        get_provider_id(&client_id, conf).await.unwrap()
-                    ))?)
-                    .bearer_auth(&conf.authentik_service_api_key)
-                    .json(&generated_provider)
-                    .send()
+                let res = update_provider(&generated_provider, &client_id, conf)
                     .await?
                     .status()
                     .is_success()
