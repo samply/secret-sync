@@ -1,4 +1,5 @@
 use anyhow::{Context, Ok};
+use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
@@ -61,6 +62,18 @@ pub async fn generate_provider_values(
         json["client_secret"] = json!(secret);
     }
     Ok(json)
+}
+
+pub async fn generate_provider(
+    generated_provider: &Value,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(CLIENT
+        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(generated_provider)
+        .send()
+        .await?)
 }
 
 pub async fn get_provider_id(

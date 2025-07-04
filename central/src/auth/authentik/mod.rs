@@ -12,12 +12,12 @@ use beam_lib::reqwest::{self, Url};
 use clap::Parser;
 use group::create_groups;
 use provider::{compare_provider, generate_provider_values, get_provider, get_provider_id};
-use reqwest::StatusCode;
+use reqwest::{Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
 use tracing::{debug, info};
-use crate::auth::authentik::provider::check_set_federation_id;
+use crate::auth::authentik::provider::{check_set_federation_id, generate_provider};
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -100,37 +100,20 @@ pub async fn create_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    combine_app_provider(name, oidc_client_config, conf).await
-}
-
-pub async fn combine_app_provider(
-    name: &str,
-    oidc_client_config: &OIDCConfig,
-    conf: &AuthentikConfig,
-) -> anyhow::Result<SecretResult> {
     let client_id = oidc_client_config.client_type(name);
-    let secret = if !oidc_client_config.is_public {
-        generate_secret()
-    } else {
-        String::with_capacity(0)
-    };
-    let generated_provider =
+    let secret = oidc_client_config.secret_type(name);
+    let generated_provider: Value =
         generate_provider_values(&client_id, oidc_client_config, &secret, conf).await?;
     debug!("Provider Values: {:#?}", generated_provider);
-    let provider_res = CLIENT
-        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
-        .bearer_auth(&conf.authentik_service_api_key)
-        .json(&generated_provider)
-        .send()
-        .await?;
+    let provider_res: Response = generate_provider(&generated_provider, conf).await?;
     // Create groups for this client
     create_groups(name, conf).await?;
     debug!("Result Provider: {:#?}", provider_res);
     match provider_res.status() {
         StatusCode::CREATED => {
             let res_provider: serde_json::Value = provider_res.json().await?;
-            let provider_id = res_provider.get("pk").and_then(|v| v.as_i64()).unwrap();
-            let provider_name = res_provider.get("name").and_then(|v| v.as_str()).unwrap();
+            let provider_id = res_provider["pk"].as_i64().expect("provider_id have to be present");
+            let provider_name = res_provider["name"].as_str().expect("provider_name have to be present");
             // check and set federation_id 
             check_set_federation_id(&name, provider_id, conf, oidc_client_config).await?;
             debug!("{:?}", provider_id);
