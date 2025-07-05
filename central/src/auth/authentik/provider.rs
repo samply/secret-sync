@@ -1,4 +1,5 @@
 use anyhow::{Context, Ok};
+use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
@@ -6,7 +7,7 @@ use tracing::debug;
 
 use crate::CLIENT;
 
-use super::{AuthentikConfig, FlowPropertymapping};
+use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
@@ -68,6 +69,36 @@ pub async fn generate_provider_values(
         json["signing_key"] = json!(mapping.signing_key);
     }
     Ok(json)
+}
+
+pub async fn generate_provider(
+    generated_provider: &Value,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(CLIENT
+        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(generated_provider)
+        .send()
+        .await?)
+}
+
+pub async fn update_provider(
+    provider_values: &Value,
+    client_id: &str,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(
+        CLIENT
+            .patch(conf.authentik_url.join(&format!(
+                "api/v3/providers/oauth2/{}/",
+                get_provider_id(&client_id, conf).await.expect("provider id have to be present")
+            ))?)
+            .bearer_auth(&conf.authentik_service_api_key)
+            .json(provider_values)
+            .send()
+            .await?
+    )
 }
 
 pub async fn get_provider_id(
@@ -197,7 +228,7 @@ pub async fn check_set_federation_id(
     if oidc_client_config.is_public {
         // public
         if let Some(private_id) = get_provider_id(
-            &oidc_client_config.flipped_client_type(client_name),
+            &flipped_client_type(oidc_client_config, client_name),
             conf
         ).await {
             debug!("public");
@@ -209,7 +240,7 @@ pub async fn check_set_federation_id(
     } else {
         // private
         if let Some(public_id) = get_provider_id(
-            &oidc_client_config.flipped_client_type(client_name),
+            &flipped_client_type(oidc_client_config, client_name),
             conf
         ).await {
             debug!("private");

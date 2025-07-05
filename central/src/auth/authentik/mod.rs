@@ -1,10 +1,13 @@
 mod app;
 mod group;
 mod provider;
+#[cfg(test)]
 mod test;
 
+use crate::auth::authentik::provider::{
+    check_set_federation_id, generate_provider, update_provider,
+};
 use crate::auth::generate_secret;
-use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
 use app::{check_app_result, compare_app_provider, get_application};
@@ -16,8 +19,8 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
+use std::sync::Mutex;
 use tracing::{debug, info};
-use crate::auth::authentik::provider::check_set_federation_id;
 
 #[derive(Debug, Parser, Clone)]
 pub struct AuthentikConfig {
@@ -41,7 +44,7 @@ pub struct FlowPropertymapping {
     pub invalidation_flow: String,
     pub signing_key: String,
     pub property_mapping: Vec<String>,
-    pub federation_mapping: Vec<String>
+    pub federation_mapping: Vec<String>,
 }
 impl FlowPropertymapping {
     async fn new(conf: &AuthentikConfig) -> reqwest::Result<Self> {
@@ -56,10 +59,7 @@ impl FlowPropertymapping {
         let jwt_federation_sources = conf.authentik_federation_names.clone();
         //let flow_url = "/api/v3/flows/instances/?name=...";
         //let property_url = "/api/v3/propertymappings/all/?name=...";
-        let flow_url = conf
-            .authentik_url
-            .join("api/v3/flows/instances/")
-            .unwrap();
+        let flow_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
         let signing_key_url = conf
             .authentik_url
             .join("api/v3/crypto/certificatekeypairs/")
@@ -68,12 +68,10 @@ impl FlowPropertymapping {
             .authentik_url
             .join("api/v3/propertymappings/all/")
             .unwrap();
-        let federation_url = conf
-            .authentik_url
-            .join("api/v3/sources/all/")
-            .unwrap();
+        let federation_url = conf.authentik_url.join("api/v3/sources/all/").unwrap();
         let property_mapping = get_mappings_uuids(&property_url, property_keys, conf).await;
-        let federation_mapping = get_mappings_uuids(&federation_url, jwt_federation_sources, conf).await;
+        let federation_mapping =
+            get_mappings_uuids(&federation_url, jwt_federation_sources, conf).await;
         let authorization_flow = get_uuid(&flow_url, flow_auth, conf)
             .await
             .expect("No default flow present"); // flow uuid
@@ -89,7 +87,7 @@ impl FlowPropertymapping {
             invalidation_flow,
             signing_key,
             property_mapping,
-            federation_mapping
+            federation_mapping,
         };
         *PROPERTY_MAPPING_CACHE.lock().unwrap() = Some(mapping.clone());
         Ok(mapping)
@@ -110,15 +108,7 @@ pub async fn create_app_provider(
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<SecretResult> {
-    combine_app_provider(name, oidc_client_config, conf).await
-}
-
-pub async fn combine_app_provider(
-    name: &str,
-    oidc_client_config: &OIDCConfig,
-    conf: &AuthentikConfig,
-) -> anyhow::Result<SecretResult> {
-    let client_id = oidc_client_config.client_type(name);
+    let client_id = client_type(oidc_client_config, name);
     let secret = if !oidc_client_config.is_public {
         generate_secret()
     } else {
@@ -127,21 +117,20 @@ pub async fn combine_app_provider(
     let generated_provider =
         generate_provider_values(&client_id, oidc_client_config, &secret, conf).await?;
     debug!("Provider Values: {:#?}", generated_provider);
-    let provider_res = CLIENT
-        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
-        .bearer_auth(&conf.authentik_service_api_key)
-        .json(&generated_provider)
-        .send()
-        .await?;
+    let provider_res = generate_provider(&generated_provider, conf).await?;
     // Create groups for this client
     create_groups(name, conf).await?;
     debug!("Result Provider: {:#?}", provider_res);
     match provider_res.status() {
         StatusCode::CREATED => {
             let res_provider: serde_json::Value = provider_res.json().await?;
-            let provider_id = res_provider.get("pk").and_then(|v| v.as_i64()).unwrap();
-            let provider_name = res_provider.get("name").and_then(|v| v.as_str()).unwrap();
-            // check and set federation_id 
+            let provider_id = res_provider["pk"]
+                .as_i64()
+                .expect("provider id has to be present");
+            let provider_name = res_provider["name"]
+                .as_str()
+                .expect("provider name has to be present");
+            // check and set federation_id
             check_set_federation_id(&name, provider_id, conf, oidc_client_config).await?;
             debug!("{:?}", provider_id);
             info!("Provider for {provider_name} created.");
@@ -155,22 +144,19 @@ pub async fn combine_app_provider(
             }
         }
         StatusCode::BAD_REQUEST => {
-            let conflicting_provider =
-                get_provider(&client_id, conf).await?;
+            let conflicting_provider = get_provider(&client_id, conf).await?;
             debug!("{:#?}", conflicting_provider);
 
-            let app = conflicting_provider
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap();
+            let app = conflicting_provider["name"]
+                .as_str()
+                .expect("app name has to be present");
             if compare_provider(&client_id, oidc_client_config, conf, &secret).await? {
                 info!("Provider {app} existed.");
                 if check_app_result(
                     &client_id,
-                    conflicting_provider
-                        .get("pk")
-                        .and_then(|v| v.as_i64())
-                        .expect("pk id not found"),
+                    conflicting_provider["pk"]
+                        .as_i64()
+                        .expect("provider id has to be present"),
                     conf,
                 )
                 .await?
@@ -190,14 +176,7 @@ pub async fn combine_app_provider(
                     );
                 }
             } else {
-                let res = CLIENT
-                    .patch(conf.authentik_url.join(&format!(
-                        "api/v3/providers/oauth2/{}/",
-                        get_provider_id(&client_id, conf).await.unwrap()
-                    ))?)
-                    .bearer_auth(&conf.authentik_service_api_key)
-                    .json(&generated_provider)
-                    .send()
+                let res = update_provider(&generated_provider, &client_id, conf)
                     .await?
                     .status()
                     .is_success()
@@ -259,4 +238,20 @@ async fn get_mappings_uuids(
         );
     }
     result
+}
+
+pub fn client_type(oidc_config: &OIDCConfig, name: &str) -> String {
+    format!(
+        "{}-{}",
+        name,
+        if oidc_config.is_public { "public" } else { "private" }
+    )
+}
+//use case federation id
+pub fn flipped_client_type(oidc_config: &OIDCConfig, name: &str) -> String {
+    format!(
+        "{}-{}",
+        name,
+        if oidc_config.is_public { "private" } else { "public" }
+    )
 }

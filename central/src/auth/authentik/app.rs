@@ -6,10 +6,7 @@ use tracing::{debug, info};
 
 use crate::CLIENT;
 
-use super::{
-    provider::{compare_provider, get_provider_id},
-    AuthentikConfig,
-};
+use super::{client_type, provider::{compare_provider, get_provider_id}, AuthentikConfig};
 
 pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
     json!({
@@ -105,7 +102,7 @@ pub async fn compare_app_provider(
     secret: &str,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
-    let client_id = oidc_client_config.client_type(name);
+    let client_id = client_type(oidc_client_config, name);
     let provider_pk = get_provider_id(&client_id, conf).await;
     match provider_pk {
         Some(pr_id) => {
