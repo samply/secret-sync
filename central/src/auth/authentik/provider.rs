@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use anyhow::{Context, Ok};
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
@@ -53,7 +54,7 @@ pub async fn generate_provider_values(
                 });
             }
         }
-     
+
         json["redirect_uris"] = json!(res_urls);
     }
 
@@ -103,7 +104,7 @@ pub async fn update_provider(
 
 pub async fn get_provider_id(
     client_id: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> Option<i64> {
     //let provider_search = "api/v3/providers/all/?name=...";
     let query_url = conf.authentik_url.join("api/v3/providers/oauth2/").unwrap();
@@ -168,13 +169,23 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             })
     };
 
-    let redirct_url_match = || {
+    let redirect_url_match = || {
         let a_uris = a["redirect_uris"].as_array();
         let b_uris = b["redirect_uris"].as_array();
+        let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<(String, String)> {
+            uris
+                .iter()
+                .filter_map(|item| {
+                    Some((
+                        item["matching_mode"].as_str()?.to_owned(),
+                        item["url"].as_str()?.to_owned(),
+                    ))
+                })
+                .collect()
+        };
         match (a_uris, b_uris) {
             (Some(a_uris), Some(b_uris)) => {
-                a_uris.iter().all(|auri| b_uris.contains(auri))
-                    && b_uris.iter().all(|buri| a_uris.contains(buri))
+                extract_redirect_obj(a_uris) == extract_redirect_obj(b_uris)
             }
             (None, None) => true,
             _ => false,
@@ -185,13 +196,14 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         && a["authorization_flow"] == b["authorization_flow"]
         && a["invalidation_flow"] == b["invalidation_flow"]
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
-        && redirct_url_match()
+        && includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v))
+        && redirect_url_match()
 }
 
 pub async fn patch_provider(
     id: i64,
     federation_id: i64,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
     let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id))?;
@@ -214,8 +226,8 @@ pub async fn patch_provider(
         ["jwt_federation_providers"][0].as_i64() {
         Some(_jwt_federation_providers) => {
             Ok(())
-        },
-        None => { anyhow::bail!("No jwt federation_providers found") },
+        }
+        None => { anyhow::bail!("No jwt federation_providers found") }
     }
 }
 
@@ -229,7 +241,7 @@ pub async fn check_set_federation_id(
         // public
         if let Some(private_id) = get_provider_id(
             &flipped_client_type(oidc_client_config, client_name),
-            conf
+            conf,
         ).await {
             debug!("public");
             patch_provider(private_id, provider_id, conf).await
@@ -241,7 +253,7 @@ pub async fn check_set_federation_id(
         // private
         if let Some(public_id) = get_provider_id(
             &flipped_client_type(oidc_client_config, client_name),
-            conf
+            conf,
         ).await {
             debug!("private");
             patch_provider(provider_id, public_id, conf).await
@@ -259,7 +271,7 @@ fn is_regex_uri(uri: &str) -> bool {
 fn convert_to_regex_url(uri: &str) -> String {
     let mut result_uri = String::from("^");
     for ch in uri.chars() {
-        match ch { 
+        match ch {
             '.' => result_uri.push_str(r"\."),
             '*' => result_uri.push_str(".*"),
             '?' => result_uri.push_str("."),

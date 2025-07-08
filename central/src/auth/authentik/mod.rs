@@ -244,7 +244,11 @@ pub fn client_type(oidc_config: &OIDCConfig, name: &str) -> String {
     format!(
         "{}-{}",
         name,
-        if oidc_config.is_public { "public" } else { "private" }
+        if oidc_config.is_public {
+            "public"
+        } else {
+            "private"
+        }
     )
 }
 //use case federation id
@@ -252,6 +256,10 @@ pub fn flipped_client_type(oidc_config: &OIDCConfig, name: &str) -> String {
     format!(
         "{}-{}",
         name,
-        if oidc_config.is_public { "private" } else { "public" }
+        if oidc_config.is_public {
+            "private"
+        } else {
+            "public"
+        }
     )
 }
