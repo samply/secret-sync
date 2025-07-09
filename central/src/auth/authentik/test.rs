@@ -55,6 +55,7 @@ async fn test_create_client() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
             "http://dkfz.verbis/*".into(),
             "https://e000-nb000.inet.dkfz-heidelberg.de/opal/*".into(),
+            "https://e000-nb000/oauth2-idm/callback".into(),
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
@@ -80,6 +81,7 @@ async fn test_create_client() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
             "http://dkfz.verbis/*".into(),
             "https://e000-nb000.inet.dkfz-heidelberg.de/opal/*".into(),
+            "https://e000-nb000/oauth2-idm/callback".into(),
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
