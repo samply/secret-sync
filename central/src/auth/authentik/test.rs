@@ -1,7 +1,9 @@
 use crate::auth::authentik::app::{check_app_result, compare_app_provider, generate_app_values};
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
-use crate::auth::authentik::{client_type, create_app_provider, get_application, get_uuid, validate_application, AuthentikConfig};
+use crate::auth::authentik::{
+    client_type, create_app_provider, get_app, get_uuid, validate_app, AuthentikConfig,
+};
 use crate::CLIENT;
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -64,6 +66,7 @@ async fn test_create_client() -> anyhow::Result<()> {
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
+    debug!("Provider: {:?}", provider_pk);
     // private client
     let client_config = OIDCConfig {
         is_public: false,
@@ -203,7 +206,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         .expect("We know the provider already exists so updating should be successful");
     debug!("Updated:  {:#?}", res);
     debug!("Provider {name} updated");
-    debug!("App now: {:#?}", get_application(name, &conf).await?);
+    debug!("App now: {:#?}", get_app(name, &conf).await?);
     Ok(())
 }
 
@@ -248,4 +251,5 @@ async fn provider_check() {
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
+    debug!("Provider: {:?}", provider_pk);
 }

@@ -10,11 +10,11 @@ use crate::auth::authentik::provider::{
 use crate::auth::generate_secret;
 use crate::CLIENT;
 use anyhow::bail;
-use app::{check_app_result, compare_app_provider, get_application};
+use app::{check_app_result, compare_app_provider, get_app};
 use beam_lib::reqwest::{self, Url};
 use clap::Parser;
 use group::create_groups;
-use provider::{compare_provider, generate_provider_values, get_provider, get_provider_id};
+use provider::{compare_provider, generate_provider_values, get_provider};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -94,7 +94,7 @@ impl FlowPropertymapping {
     }
 }
 
-pub async fn validate_application(
+pub async fn validate_app(
     name: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
@@ -139,14 +139,13 @@ pub async fn create_app_provider(
             } else {
                 bail!(
                     "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                    get_application(&client_id, conf).await?
+                    get_app(&client_id, conf).await?
                 );
             }
         }
         StatusCode::BAD_REQUEST => {
             let conflicting_provider = get_provider(&client_id, conf).await?;
             debug!("{:#?}", conflicting_provider);
-
             let app = conflicting_provider["name"]
                 .as_str()
                 .expect("app name has to be present");
@@ -172,7 +171,7 @@ pub async fn create_app_provider(
                 } else {
                     bail!(
                         "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                        get_application(&client_id, conf).await?
+                        get_app(&client_id, conf).await?
                     );
                 }
             } else {
@@ -196,7 +195,7 @@ pub async fn create_app_provider(
                 } else {
                     bail!(
                         "Unexpected Conflict {name} while overwriting authentik app. {:?}",
-                        get_application(&client_id, conf).await?
+                        get_app(&client_id, conf).await?
                     );
                 }
             }
@@ -228,7 +227,6 @@ async fn get_mappings_uuids(
     search_key: Vec<String>,
     conf: &AuthentikConfig,
 ) -> Vec<String> {
-    // TODO: async iter to collect
     let mut result: Vec<String> = vec![];
     for key in search_key {
         result.push(

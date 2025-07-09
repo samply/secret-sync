@@ -13,14 +13,14 @@ use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
     pub matching_mode: String,
-    pub url: String
+    pub url: String,
 }
 
 pub async fn generate_provider_values(
     client_id: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<Value> {
     let mapping = FlowPropertymapping::new(conf).await?;
 
@@ -74,7 +74,7 @@ pub async fn generate_provider_values(
 
 pub async fn generate_provider(
     generated_provider: &Value,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<Response> {
     Ok(CLIENT
         .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
@@ -87,7 +87,7 @@ pub async fn generate_provider(
 pub async fn update_provider(
     provider_values: &Value,
     client_id: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<Response> {
     Ok(CLIENT
         .patch(conf.authentik_url.join(&format!(
@@ -140,7 +140,7 @@ pub async fn compare_provider(
     client_id: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    secret: &str
+    secret: &str,
 ) -> anyhow::Result<bool> {
     let client = get_provider(client_id, conf).await?;
     let wanted_client =
@@ -195,7 +195,7 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
 pub async fn patch_provider(
     id: i64,
     federation_id: i64,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
     let query_url = conf
@@ -228,7 +228,7 @@ pub async fn check_set_federation_id(
     client_name: &str,
     provider_id: i64,
     conf: &AuthentikConfig,
-    oidc_client_config: &OIDCConfig
+    oidc_client_config: &OIDCConfig,
 ) -> anyhow::Result<()> {
     if oidc_client_config.is_public {
         // public
