@@ -6,12 +6,12 @@ pub fn generate_secret() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                             abcdefghijklmnopqrstuvwxyz\
                             0123456789";
-    const PASSWORD_LEN: usize = 30;
-    let mut rng = rand::rng();
+    const PASSWORD_LEN: usize = 32;
+    let mut rng = rand::thread_rng();
 
     (0..PASSWORD_LEN)
         .map(|_| {
-            let idx = rng.random_range(0..CHARSET.len());
+            let idx = rng.gen_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect()
