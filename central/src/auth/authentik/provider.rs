@@ -1,9 +1,9 @@
-use std::collections::HashSet;
 use anyhow::{Context, Ok};
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
+use std::collections::HashSet;
 use tracing::debug;
 
 use crate::CLIENT;
@@ -13,14 +13,14 @@ use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
     pub matching_mode: String,
-    pub url: String,
+    pub url: String
 }
 
 pub async fn generate_provider_values(
     client_id: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<Value> {
     let mapping = FlowPropertymapping::new(conf).await?;
 
@@ -74,7 +74,7 @@ pub async fn generate_provider_values(
 
 pub async fn generate_provider(
     generated_provider: &Value,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<Response> {
     Ok(CLIENT
         .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
@@ -87,25 +87,20 @@ pub async fn generate_provider(
 pub async fn update_provider(
     provider_values: &Value,
     client_id: &str,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<Response> {
-    Ok(
-        CLIENT
-            .patch(conf.authentik_url.join(&format!(
+    Ok(CLIENT
+        .patch(conf.authentik_url.join(&format!(
                 "api/v3/providers/oauth2/{}/",
                 get_provider_id(&client_id, conf).await.expect("provider id have to be present")
             ))?)
-            .bearer_auth(&conf.authentik_service_api_key)
-            .json(provider_values)
-            .send()
-            .await?
-    )
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(provider_values)
+        .send()
+        .await?)
 }
 
-pub async fn get_provider_id(
-    client_id: &str,
-    conf: &AuthentikConfig,
-) -> Option<i64> {
+pub async fn get_provider_id(client_id: &str, conf: &AuthentikConfig) -> Option<i64> {
     //let provider_search = "api/v3/providers/all/?name=...";
     let query_url = conf.authentik_url.join("api/v3/providers/oauth2/").unwrap();
     let target_value: serde_json::Value = CLIENT
@@ -123,10 +118,7 @@ pub async fn get_provider_id(
     Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
-pub async fn get_provider(
-    client_id: &str,
-    conf: &AuthentikConfig,
-) -> anyhow::Result<Value> {
+pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Result<Value> {
     let res = get_provider_id(client_id, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
@@ -148,7 +140,7 @@ pub async fn compare_provider(
     client_id: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
-    secret: &str,
+    secret: &str
 ) -> anyhow::Result<bool> {
     let client = get_provider(client_id, conf).await?;
     let wanted_client =
@@ -168,13 +160,11 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
                     .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
             })
     };
-
     let redirect_url_match = || {
         let a_uris = a["redirect_uris"].as_array();
         let b_uris = b["redirect_uris"].as_array();
         let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<(String, String)> {
-            uris
-                .iter()
+            uris.iter()
                 .filter_map(|item| {
                     Some((
                         item["matching_mode"].as_str()?.to_owned(),
@@ -193,20 +183,24 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
     };
     a["name"] == b["name"]
         && a["client_secret"] == b["client_secret"]
+        && a["sub_mode"] == b["sub_mode"]
         && a["authorization_flow"] == b["authorization_flow"]
         && a["invalidation_flow"] == b["invalidation_flow"]
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
         && includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v))
+        && includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v))
         && redirect_url_match()
 }
 
 pub async fn patch_provider(
     id: i64,
     federation_id: i64,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<()> {
     //"api/v3/providers/oauth2/70/";
-    let query_url = conf.authentik_url.join(&format!("api/v3/providers/oauth2/{}/", id))?;
+    let query_url = conf
+        .authentik_url
+        .join(&format!("api/v3/providers/oauth2/{}/", id))?;
     let json = json!({
         "jwt_federation_providers": [
                 federation_id,
@@ -222,12 +216,11 @@ pub async fn patch_provider(
         .await?;
     debug!("Value search key {id}: set {federation_id}");
     // contains at the moment one id
-    match target_value
-        ["jwt_federation_providers"][0].as_i64() {
-        Some(_jwt_federation_providers) => {
-            Ok(())
+    match target_value["jwt_federation_providers"][0].as_i64() {
+        Some(_jwt_federation_providers) => Ok(()),
+        None => {
+            anyhow::bail!("No jwt federation_providers found")
         }
-        None => { anyhow::bail!("No jwt federation_providers found") }
     }
 }
 
@@ -235,14 +228,13 @@ pub async fn check_set_federation_id(
     client_name: &str,
     provider_id: i64,
     conf: &AuthentikConfig,
-    oidc_client_config: &OIDCConfig,
+    oidc_client_config: &OIDCConfig
 ) -> anyhow::Result<()> {
     if oidc_client_config.is_public {
         // public
-        if let Some(private_id) = get_provider_id(
-            &flipped_client_type(oidc_client_config, client_name),
-            conf,
-        ).await {
+        if let Some(private_id) =
+            get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
+        {
             debug!("public");
             patch_provider(private_id, provider_id, conf).await
         } else {
@@ -251,10 +243,9 @@ pub async fn check_set_federation_id(
         }
     } else {
         // private
-        if let Some(public_id) = get_provider_id(
-            &flipped_client_type(oidc_client_config, client_name),
-            conf,
-        ).await {
+        if let Some(public_id) =
+            get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
+        {
             debug!("private");
             patch_provider(provider_id, public_id, conf).await
         } else {
