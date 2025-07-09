@@ -87,6 +87,28 @@ async fn test_create_client() -> anyhow::Result<()> {
     Ok(())
 }
 
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_validate_client() -> anyhow::Result<()> {
+    let conf = setup_authentik()?;
+    let name = "secondtest";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+            "http://dkfz.verbis/*".into(),
+            "https://e000-nb000.inet.dkfz-heidelberg.de/opal/*".into(),
+        ],
+    };
+    let res = compare_app_provider(name, &client_config, "", &conf).await?;
+    debug!("Validate: {res}");
+    Ok(())
+}
+
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn group_test() -> anyhow::Result<()> {
@@ -156,25 +178,6 @@ async fn create_property() {
 
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
-async fn test_validate_client() -> anyhow::Result<()> {
-    let conf = setup_authentik()?;
-    let name = "air";
-    // public client
-    let client_config = OIDCConfig {
-        is_public: true,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let res = compare_app_provider(name, &client_config, "", &conf).await?;
-    debug!("Validate: {res}");
-    Ok(())
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
 async fn test_patch_provider() -> anyhow::Result<()> {
     let conf = setup_authentik()?;
     let name = "dark";
@@ -188,7 +191,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         ],
     };
     let pk_id = get_provider_id(name, &conf).await.unwrap();
-    let generated_provider = generate_provider_values(name, &client_config, "", &conf).await?;
+    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None).await?;
     debug!("{:#?}", generated_provider);
 
     let res = CLIENT

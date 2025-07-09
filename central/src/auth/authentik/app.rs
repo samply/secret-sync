@@ -117,7 +117,7 @@ pub async fn compare_app_provider(
         Some(pr_id) => {
             let app_res = get_app(&client_id, conf).await?;
             if app_configs_match(&app_res, &generate_app_values(pr_id, &client_id)) {
-                compare_provider(&client_id, oidc_client_config, conf, secret).await
+                compare_provider(&client_id, name,oidc_client_config, conf, secret).await
             } else {
                 Ok(false)
             }

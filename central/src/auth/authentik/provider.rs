@@ -21,6 +21,7 @@ pub async fn generate_provider_values(
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
+    federation_id: Option<i64>,
 ) -> anyhow::Result<Value> {
     let mapping = FlowPropertymapping::new(conf).await?;
 
@@ -68,6 +69,11 @@ pub async fn generate_provider_values(
     }
     if oidc_client_config.is_public {
         json["signing_key"] = json!(mapping.signing_key);
+    }
+    if !oidc_client_config.is_public {
+        if let Some(federation_id) = federation_id {
+            json["jwt_federation_providers"] = json!([federation_id]);
+        }
     }
     Ok(json)
 }
@@ -138,15 +144,21 @@ pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Re
 
 pub async fn compare_provider(
     client_id: &str,
+    client_name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     secret: &str,
 ) -> anyhow::Result<bool> {
     let client = get_provider(client_id, conf).await?;
-    let wanted_client =
-        generate_provider_values(client_id, oidc_client_config, secret, conf).await?;
-    debug!("{:#?}", client);
-    debug!("{:#?}", wanted_client);
+
+    let wanted_client = generate_provider_values(
+        client_id,
+        oidc_client_config,
+        secret,
+        conf,
+        get_provider_id(&flipped_client_type(oidc_client_config,client_name), conf).await,
+    )
+    .await?;
     Ok(provider_configs_match(&client, &wanted_client))
 }
 
@@ -192,7 +204,7 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         && redirect_url_match()
 }
 
-pub async fn patch_provider(
+pub async fn patch_provider_federation(
     id: i64,
     federation_id: i64,
     conf: &AuthentikConfig,
@@ -236,7 +248,7 @@ pub async fn check_set_federation_id(
             get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
         {
             debug!("public");
-            patch_provider(private_id, provider_id, conf).await
+            patch_provider_federation(private_id, provider_id, conf).await
         } else {
             debug!("no jet found for '{}' federation_id", client_name);
             Ok(())
@@ -247,7 +259,7 @@ pub async fn check_set_federation_id(
             get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
         {
             debug!("private");
-            patch_provider(provider_id, public_id, conf).await
+            patch_provider_federation(provider_id, public_id, conf).await
         } else {
             debug!("No provider found for '{}' federation_id", client_name);
             Ok(())
