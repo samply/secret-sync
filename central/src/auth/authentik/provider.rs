@@ -46,6 +46,12 @@ pub async fn generate_provider_values(
                     url: convert_to_regex_url(url),
                 });
             } else {
+                if url.ends_with("callback") {
+                    res_urls.push(RedirectURIS {
+                        matching_mode: "strict".to_owned(),
+                        url: expand_redirect_url(url),
+                    });    
+                }
                 res_urls.push(RedirectURIS {
                     matching_mode: "strict".to_owned(),
                     url: url.to_owned(),
@@ -248,4 +254,15 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
         }
     }
     result_uri
+}
+// expand for opal /"callback" -> .inet.dkfz-heidelberg.de
+fn expand_redirect_url(url: &str) -> String {
+    if let Some(host_part) = url.strip_prefix("https://") {
+        if let Some((short_host, path)) = host_part.split_once('/') {
+            if !short_host.contains('.') {
+                return format!("https://{}.inet.dkfz-heidelberg.de/{}", short_host, path);
+            }
+        }
+    }
+    url.to_string()
 }
