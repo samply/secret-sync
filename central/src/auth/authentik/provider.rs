@@ -46,7 +46,7 @@ pub async fn generate_provider_values(
                     url: convert_to_regex_url(url),
                 });
             } else {
-                if url.ends_with("callback") {
+                if url.ends_with("callback") && !oidc_client_config.is_public {
                     res_urls.push(RedirectURIS {
                         matching_mode: "strict".to_owned(),
                         url: expand_redirect_url(url),
