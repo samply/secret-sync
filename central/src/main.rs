@@ -7,7 +7,7 @@ use gitlab::GitlabTokenProvider;
 use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
 use shared::{SecretType, SecretRequest, SecretResult};
-use tracing::warn;
+use tracing::{info, warn};
 
 mod auth;
 mod gitlab;
@@ -47,14 +47,14 @@ async fn main() {
                 }
             }),
             Err(beam_lib::BeamError::ReqwestError(e)) if e.is_connect() => {
-                eprintln!(
+                warn!(
                     "Failed to connect to beam proxy on {}. Retrying in 30s",
                     CONFIG.beam_url
                 );
                 tokio::time::sleep(Duration::from_secs(30)).await
             }
             Err(e) => {
-                eprintln!("Error during task polling {e}");
+                warn!("Error during task polling {e}");
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
@@ -81,7 +81,7 @@ pub async fn handle_task(task: TaskRequest<Vec<SecretRequest>>) {
         .await;
 
     if let Err(e) = result {
-        eprintln!("Failed to respond to task: {e}")
+        warn!("Failed to respond to task: {e}")
     }
 }
 
@@ -89,13 +89,14 @@ pub async fn handle_secret_request(
     request: SecretRequest,
     from: &AppId,
 ) -> Result<SecretResult, String> {
-    println!("Working on secret request {request:?} from {from}");
+    info!("Working on secret request {request:?} from {from}");
 
     match request.secret_type {
         SecretType::OpenIdConnect(oidc_client_config) => {
             let Some(oidc_provider) = OIDC_PROVIDER.as_ref() else {
                 return Err("No OIDC provider configured!".into());
             };
+            info!("This OIDCConfig is send: {:#?}", oidc_client_config);
             oidc_provider.handle_secret_request(request.request_type, &oidc_client_config, from).await
         }
         SecretType::GitLabProjectAccessToken(client_config) => {
