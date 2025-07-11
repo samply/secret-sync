@@ -6,10 +6,7 @@ use tracing::{debug, info};
 
 use crate::CLIENT;
 
-use super::{
-    provider::{compare_provider, get_provider_id},
-    AuthentikConfig,
-};
+use super::{client_type, provider::{compare_provider, get_provider_id}, AuthentikConfig};
 
 pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
     json!({
@@ -20,7 +17,7 @@ pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
     })
 }
 
-pub async fn generate_application(
+pub async fn generate_app(
     provider: i64,
     client_id: &str,
     conf: &AuthentikConfig,
@@ -39,51 +36,59 @@ pub async fn generate_application(
         .await
 }
 
+pub async fn update_app(
+    client_id: &str,
+    provider_pk: i64,
+    app_name: &str,
+    conf: &AuthentikConfig
+) -> anyhow::Result<bool> {
+    let url = conf.authentik_url.join(&format!("api/v3/core/applications/{app_name}/"))?;
+    let st = CLIENT
+        .patch(url)
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(&generate_app_values(provider_pk, client_id))
+        .send()
+        .await?;
+    debug!("Patching app has status: {:?}", st.status());
+    Ok(st.status().is_success())
+}
+
 pub async fn check_app_result(
     client_id: &str,
     provider_pk: i64,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<bool> {
-    let res = generate_application(provider_pk, client_id, conf).await?;
+    let res = generate_app(provider_pk, client_id, conf).await?;
     match res.status() {
         StatusCode::CREATED => {
             info!("Application for {client_id} created.");
             Ok(true)
         }
         StatusCode::BAD_REQUEST => {
-            let conflicting_client = get_application(client_id, conf).await?;
+            let conflicting_app = get_app(client_id, conf).await?;
             if app_configs_match(
-                &conflicting_client,
+                &conflicting_app,
                 &generate_app_values(provider_pk, client_id),
             ) {
                 info!("Application {client_id} exists.");
                 Ok(true)
             } else {
                 info!("Application for {client_id} is updated.");
-                Ok(CLIENT
-                    .put(
-                        conf.authentik_url.join("api/v3/core/applicaions/")?.join(
-                            conflicting_client
-                                .get("name")
-                                .and_then(Value::as_str)
-                                .expect("No valid client"),
-                        )?,
-                    )
-                    .bearer_auth(&conf.authentik_service_api_key)
-                    .json(&generate_app_values(provider_pk, client_id))
-                    .send()
-                    .await?
-                    .status()
-                    .is_success())
+                update_app(
+                    client_id,
+                    provider_pk,
+                    conflicting_app["name"].as_str().expect("app name has to be present"),
+                    conf,
+                ).await
             }
         }
         s => anyhow::bail!("Unexpected statuscode {s} while creating authentik client. {res:?}"),
     }
 }
 
-pub async fn get_application(
+pub async fn get_app(
     client_id: &str,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> reqwest::Result<serde_json::Value> {
     CLIENT
         .get(
@@ -103,15 +108,15 @@ pub async fn compare_app_provider(
     name: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
-    conf: &AuthentikConfig,
+    conf: &AuthentikConfig
 ) -> anyhow::Result<bool> {
-    let client_id = oidc_client_config.client_type(name);
+    let client_id = client_type(oidc_client_config, name);
     let provider_pk = get_provider_id(&client_id, conf).await;
     match provider_pk {
         Some(pr_id) => {
-            let app_res = get_application(&client_id, conf).await?;
+            let app_res = get_app(&client_id, conf).await?;
             if app_configs_match(&app_res, &generate_app_values(pr_id, &client_id)) {
-                compare_provider(&client_id, oidc_client_config, conf, secret).await
+                compare_provider(&client_id, name,oidc_client_config, conf, secret).await
             } else {
                 Ok(false)
             }
