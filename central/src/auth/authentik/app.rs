@@ -42,16 +42,15 @@ pub async fn update_app(
     app_name: &str,
     conf: &AuthentikConfig
 ) -> anyhow::Result<bool> {
-    let url = conf.authentik_url.join("api/v3/core/applications/")?
-        .join(app_name)?;
-    Ok(CLIENT
+    let url = conf.authentik_url.join(&format!("api/v3/core/applications/{app_name}/"))?;
+    let st = CLIENT
         .patch(url)
         .bearer_auth(&conf.authentik_service_api_key)
         .json(&generate_app_values(provider_pk, client_id))
         .send()
-        .await?
-        .status()
-        .is_success())
+        .await?;
+    debug!("Patching app has status: {:?}", st.status());
+    Ok(st.status().is_success())
 }
 
 pub async fn check_app_result(
