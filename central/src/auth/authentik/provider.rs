@@ -70,9 +70,7 @@ pub async fn generate_provider_values(
     if let Some(secret) = secret {
         json["client_secret"] = json!(secret);
     }
-    if oidc_client_config.is_public {
-        json["signing_key"] = json!(mapping.signing_key);
-    }
+    json["signing_key"] = json!(mapping.signing_key);
     Ok(json)
 }
 
