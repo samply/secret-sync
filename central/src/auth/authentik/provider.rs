@@ -39,23 +39,31 @@ pub async fn generate_provider_values(
     if !oidc_client_config.redirect_urls.is_empty() {
         let mut res_urls: Vec<RedirectURIS> = Vec::new();
         for url in &oidc_client_config.redirect_urls {
-            if is_regex_uri(url) {
-                res_urls.push(RedirectURIS {
-                    matching_mode: "strict".to_owned(),
-                    url: convert_to_strict_for_regex(url),
-                });
-                res_urls.push(RedirectURIS {
-                    matching_mode: "regex".to_owned(),
-                    url: convert_to_regex_url(url),
-                });
-            } else {
-                res_urls.push(RedirectURIS {
-                    matching_mode: "strict".to_owned(),
-                    url: url.to_owned(),
-                });
+            if !is_strict_url_contained(url, &res_urls) {
+                if is_regex_uri(url) {
+                    res_urls.push(RedirectURIS {
+                        matching_mode: "strict".to_owned(),
+                        url: convert_to_strict_for_regex(url),
+                    });
+                    res_urls.push(RedirectURIS {
+                        matching_mode: "regex".to_owned(),
+                        url: convert_to_regex_url(url),
+                    });
+                } else {
+                    if url.ends_with("/oauth2-idm/callback") && !oidc_client_config.is_public {
+                        res_urls.push(RedirectURIS {
+                            matching_mode: "strict".to_owned(),
+                            url: expand_redirect_url(url),
+                        });
+                    }
+                    res_urls.push(RedirectURIS {
+                        matching_mode: "strict".to_owned(),
+                        url: url.to_owned(),
+                    });
+                }
             }
         }
-
+     
         json["redirect_uris"] = json!(res_urls);
     }
 
@@ -67,9 +75,8 @@ pub async fn generate_provider_values(
     if let Some(secret) = secret {
         json["client_secret"] = json!(secret);
     }
-    if oidc_client_config.is_public {
-        json["signing_key"] = json!(mapping.signing_key);
-    }
+    json["signing_key"] = json!(mapping.signing_key);
+    
     if !oidc_client_config.is_public {
         if let Some(federation_id) = federation_id {
             json["jwt_federation_providers"] = json!([federation_id]);
@@ -124,7 +131,10 @@ pub async fn get_provider_id(client_id: &str, conf: &AuthentikConfig) -> Option<
     Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
-pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Result<Value> {
+pub async fn get_provider(
+    client_id: &str,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Value> {
     let res = get_provider_id(client_id, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
@@ -228,11 +238,12 @@ pub async fn patch_provider_federation(
         .await?;
     debug!("Value search key {id}: set {federation_id}");
     // contains at the moment one id
-    match target_value["jwt_federation_providers"][0].as_i64() {
-        Some(_jwt_federation_providers) => Ok(()),
-        None => {
-            anyhow::bail!("No jwt federation_providers found")
-        }
+    match target_value
+        ["jwt_federation_providers"][0].as_i64() {
+        Some(_jwt_federation_providers) => {
+            Ok(())
+        },
+        None => { anyhow::bail!("No jwt federation_providers found") },
     }
 }
 
@@ -294,4 +305,21 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
         }
     }
     result_uri
+}
+// expand for opal /"callback" -> .inet.dkfz-heidelberg.de
+fn expand_redirect_url(url: &str) -> String {
+    if let Some(host_part) = url.strip_prefix("https://") {
+        if let Some((short_host, path)) = host_part.split_once('/') {
+            if !short_host.contains('.') {
+                return format!("https://{}.inet.dkfz-heidelberg.de/{}", short_host, path);
+            }
+        }
+    }
+    url.to_string()
+}
+
+fn is_strict_url_contained(target_url: &str, res_urls: &[RedirectURIS]) -> bool {
+    res_urls
+        .iter()
+        .any(|entry| entry.matching_mode == "strict" && entry.url == target_url)
 }
