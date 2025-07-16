@@ -1,12 +1,14 @@
 use anyhow::{Context, Ok};
+use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
+use std::collections::HashSet;
 use tracing::debug;
 
 use crate::CLIENT;
 
-use super::{AuthentikConfig, FlowPropertymapping};
+use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedirectURIS {
@@ -19,6 +21,7 @@ pub async fn generate_provider_values(
     oidc_client_config: &OIDCConfig,
     secret: &str,
     conf: &AuthentikConfig,
+    federation_id: Option<i64>,
 ) -> anyhow::Result<Value> {
     let mapping = FlowPropertymapping::new(conf).await?;
 
@@ -60,7 +63,7 @@ pub async fn generate_provider_values(
                 }
             }
         }
-
+     
         json["redirect_uris"] = json!(res_urls);
     }
 
@@ -73,7 +76,41 @@ pub async fn generate_provider_values(
         json["client_secret"] = json!(secret);
     }
     json["signing_key"] = json!(mapping.signing_key);
+    
+    if !oidc_client_config.is_public {
+        if let Some(federation_id) = federation_id {
+            json["jwt_federation_providers"] = json!([federation_id]);
+        }
+    } else { json["jwt_federation_providers"] = json!([]); }
     Ok(json)
+}
+
+pub async fn generate_provider(
+    generated_provider: &Value,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(CLIENT
+        .post(conf.authentik_url.join("api/v3/providers/oauth2/")?)
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(generated_provider)
+        .send()
+        .await?)
+}
+
+pub async fn update_provider(
+    provider_values: &Value,
+    client_id: &str,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Response> {
+    Ok(CLIENT
+        .patch(conf.authentik_url.join(&format!(
+                "api/v3/providers/oauth2/{}/",
+                get_provider_id(&client_id, conf).await.expect("provider id have to be present")
+            ))?)
+        .bearer_auth(&conf.authentik_service_api_key)
+        .json(provider_values)
+        .send()
+        .await?)
 }
 
 pub async fn get_provider_id(client_id: &str, conf: &AuthentikConfig) -> Option<i64> {
@@ -94,7 +131,10 @@ pub async fn get_provider_id(client_id: &str, conf: &AuthentikConfig) -> Option<
     Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
-pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Result<Value> {
+pub async fn get_provider(
+    client_id: &str,
+    conf: &AuthentikConfig,
+) -> anyhow::Result<Value> {
     let res = get_provider_id(client_id, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
@@ -114,16 +154,26 @@ pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Re
 
 pub async fn compare_provider(
     client_id: &str,
+    client_name: &str,
     oidc_client_config: &OIDCConfig,
     conf: &AuthentikConfig,
     secret: &str,
 ) -> anyhow::Result<bool> {
     let client = get_provider(client_id, conf).await?;
-    let wanted_client =
-        generate_provider_values(client_id, oidc_client_config, secret, conf).await?;
-    debug!("{:#?}", client);
-    debug!("{:#?}", wanted_client);
-    Ok(provider_configs_match(&client, &wanted_client))
+
+    let wanted_client = generate_provider_values(
+        client_id,
+        oidc_client_config,
+        secret,
+        conf,
+        get_provider_id(&flipped_client_type(oidc_client_config,client_name), conf).await,
+    )
+    .await?;
+    if oidc_client_config.is_public {
+        Ok(provider_configs_match(&client, &wanted_client))
+    } else {
+        Ok(provider_configs_match(&client, &wanted_client) && client["client_secret"] == wanted_client["client_secret"])
+    }
 }
 
 pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
@@ -136,14 +186,22 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
                     .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
             })
     };
-
-    let redirct_url_match = || {
+    let redirect_url_match = || {
         let a_uris = a["redirect_uris"].as_array();
         let b_uris = b["redirect_uris"].as_array();
+        let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<(String, String)> {
+            uris.iter()
+                .filter_map(|item| {
+                    Some((
+                        item["matching_mode"].as_str()?.to_owned(),
+                        item["url"].as_str()?.to_owned(),
+                    ))
+                })
+                .collect()
+        };
         match (a_uris, b_uris) {
             (Some(a_uris), Some(b_uris)) => {
-                a_uris.iter().all(|auri| b_uris.contains(auri))
-                    && b_uris.iter().all(|buri| a_uris.contains(buri))
+                extract_redirect_obj(a_uris) == extract_redirect_obj(b_uris)
             }
             (None, None) => true,
             _ => false,
@@ -151,13 +209,16 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
     };
     a["name"] == b["name"]
         && a["client_secret"] == b["client_secret"]
+        && a["sub_mode"] == b["sub_mode"]
         && a["authorization_flow"] == b["authorization_flow"]
         && a["invalidation_flow"] == b["invalidation_flow"]
         && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
-        && redirct_url_match()
+        && includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v))
+        && includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v))
+        && redirect_url_match()
 }
 
-pub async fn patch_provider(
+pub async fn patch_provider_federation(
     id: i64,
     federation_id: i64,
     conf: &AuthentikConfig,
@@ -181,11 +242,12 @@ pub async fn patch_provider(
         .await?;
     debug!("Value search key {id}: set {federation_id}");
     // contains at the moment one id
-    match target_value["jwt_federation_providers"][0].as_i64() {
-        Some(_jwt_federation_providers) => Ok(()),
-        None => {
-            anyhow::bail!("No jwt federation_providers found")
-        }
+    match target_value
+        ["jwt_federation_providers"][0].as_i64() {
+        Some(_jwt_federation_providers) => {
+            Ok(())
+        },
+        None => { anyhow::bail!("No jwt federation_providers found") },
     }
 }
 
@@ -198,10 +260,10 @@ pub async fn check_set_federation_id(
     if oidc_client_config.is_public {
         // public
         if let Some(private_id) =
-            get_provider_id(&oidc_client_config.flipped_client_type(client_name), conf).await
+            get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
         {
             debug!("public");
-            patch_provider(private_id, provider_id, conf).await
+            patch_provider_federation(private_id, provider_id, conf).await
         } else {
             debug!("no jet found for '{}' federation_id", client_name);
             Ok(())
@@ -209,10 +271,10 @@ pub async fn check_set_federation_id(
     } else {
         // private
         if let Some(public_id) =
-            get_provider_id(&oidc_client_config.flipped_client_type(client_name), conf).await
+            get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await
         {
             debug!("private");
-            patch_provider(provider_id, public_id, conf).await
+            patch_provider_federation(provider_id, public_id, conf).await
         } else {
             debug!("No provider found for '{}' federation_id", client_name);
             Ok(())
