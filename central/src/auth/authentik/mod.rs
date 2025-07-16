@@ -118,7 +118,7 @@ pub async fn create_app_provider(
             oidc_client_config, 
             &secret, 
             conf, 
-            get_provider_id(&client_id, conf).await,
+            None,
         ).await?;
     debug!("Provider Values: {:#?}", generated_provider);
     let provider_res = generate_provider(&generated_provider, conf).await?;
