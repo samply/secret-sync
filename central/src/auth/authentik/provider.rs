@@ -81,7 +81,7 @@ pub async fn generate_provider_values(
         if let Some(federation_id) = federation_id {
             json["jwt_federation_providers"] = json!([federation_id]);
         }
-    }
+    } else { json["jwt_federation_providers"] = json!([]); }
     Ok(json)
 }
 
