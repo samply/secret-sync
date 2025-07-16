@@ -169,7 +169,11 @@ pub async fn compare_provider(
         get_provider_id(&flipped_client_type(oidc_client_config,client_name), conf).await,
     )
     .await?;
-    Ok(provider_configs_match(&client, &wanted_client))
+    if oidc_client_config.is_public {
+        Ok(provider_configs_match(&client, &wanted_client))
+    } else {
+        Ok(provider_configs_match(&client, &wanted_client) && client["client_secret"] == wanted_client["client_secret"])
+    }
 }
 
 pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
