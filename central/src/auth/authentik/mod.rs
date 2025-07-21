@@ -51,7 +51,7 @@ impl FlowPropertymapping {
         }
         let flow_auth = "Authorize Application";
         let flow_invalidation = "Logged out of application";
-        let crypto_signing_key = "authentik_hs265";
+        let crypto_signing_key = "authentik Self-signed Certificate";
         let property_keys = conf.authentik_property_names.clone();
         let jwt_federation_sources = conf.authentik_federation_names.clone();
         //let flow_url = "/api/v3/flows/instances/?name=...";
