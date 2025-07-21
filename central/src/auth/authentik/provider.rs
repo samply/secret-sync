@@ -199,7 +199,8 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             uris.iter()
                 .filter_map(|item| {
                     Some(RedirectURIS{
-                        matching_mode: item["matching_mode"]
+                        url : item["url"].as_str()?.to_owned(),
+                        matching_mode: serde_json::from_value(item["matching_mode"].clone()).ok()?,
                     }
                         
                     )
@@ -332,5 +333,5 @@ fn expand_redirect_url(url: &str) -> String {
 fn is_strict_url_contained(target_url: &str, res_urls: &HashSet<RedirectURIS>) -> bool {
     res_urls
         .iter()
-        .any(|entry| entry.matching_mode == "strict" && entry.url == target_url)
+        .any(|entry| entry.matching_mode == MatchingMode::Strict && entry.url == target_url)
 }
