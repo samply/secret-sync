@@ -5,14 +5,20 @@ use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::collections::HashSet;
 use tracing::debug;
-
+use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 use crate::CLIENT;
 
-use super::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchingMode {
+    Strict,
+    Regex,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 pub struct RedirectURIS {
-    pub matching_mode: String,
+    pub matching_mode: MatchingMode,
     pub url: String,
 }
 
@@ -37,27 +43,27 @@ pub async fn generate_provider_values(
     });
 
     if !oidc_client_config.redirect_urls.is_empty() {
-        let mut res_urls: Vec<RedirectURIS> = Vec::new();
+        let mut res_urls: HashSet<RedirectURIS> = HashSet::new();
         for url in &oidc_client_config.redirect_urls {
             if !is_strict_url_contained(url, &res_urls) {
                 if is_regex_uri(url) {
-                    res_urls.push(RedirectURIS {
-                        matching_mode: "strict".to_owned(),
+                    res_urls.insert(RedirectURIS {
+                        matching_mode: MatchingMode::Strict,
                         url: convert_to_strict_for_regex(url),
                     });
-                    res_urls.push(RedirectURIS {
-                        matching_mode: "regex".to_owned(),
+                    res_urls.insert(RedirectURIS {
+                        matching_mode: MatchingMode::Regex,
                         url: convert_to_regex_url(url),
                     });
                 } else {
                     if url.ends_with("/oauth2-idm/callback") && !oidc_client_config.is_public {
-                        res_urls.push(RedirectURIS {
-                            matching_mode: "strict".to_owned(),
+                        res_urls.insert(RedirectURIS {
+                            matching_mode: MatchingMode::Strict,
                             url: expand_redirect_url(url),
                         });
                     }
-                    res_urls.push(RedirectURIS {
-                        matching_mode: "strict".to_owned(),
+                    res_urls.insert(RedirectURIS {
+                        matching_mode: MatchingMode::Strict,
                         url: url.to_owned(),
                     });
                 }
@@ -189,13 +195,14 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
     let redirect_url_match = || {
         let a_uris = a["redirect_uris"].as_array();
         let b_uris = b["redirect_uris"].as_array();
-        let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<(String, String)> {
+        let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<RedirectURIS> {
             uris.iter()
                 .filter_map(|item| {
-                    Some((
-                        item["matching_mode"].as_str()?.to_owned(),
-                        item["url"].as_str()?.to_owned(),
-                    ))
+                    Some(RedirectURIS{
+                        matching_mode: item["matching_mode"]
+                    }
+                        
+                    )
                 })
                 .collect()
         };
@@ -322,7 +329,7 @@ fn expand_redirect_url(url: &str) -> String {
     url.to_string()
 }
 
-fn is_strict_url_contained(target_url: &str, res_urls: &[RedirectURIS]) -> bool {
+fn is_strict_url_contained(target_url: &str, res_urls: &HashSet<RedirectURIS>) -> bool {
     res_urls
         .iter()
         .any(|entry| entry.matching_mode == "strict" && entry.url == target_url)

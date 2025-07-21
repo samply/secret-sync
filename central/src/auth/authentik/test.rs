@@ -13,13 +13,13 @@ use tracing::debug;
 use tracing::field::debug;
 
 #[cfg(test)]
-pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
+pub fn setup_authentik() -> reqwest::Result<AuthentikConfig> {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .try_init();
     let token = "".to_owned();
-    Ok((AuthentikConfig {
+    Ok(AuthentikConfig {
         authentik_url: "http://localhost:9000".parse().unwrap(),
         authentik_service_api_key: token.clone(),
         authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
@@ -36,7 +36,8 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
             "Login with Institutional Account (DFN-AAI)".into(),
             "Local Account".into(),
         ],
-    }))
+        ..Default::default()
+    })
 }
 
 #[ignore = "Requires setting up a authentik"]
