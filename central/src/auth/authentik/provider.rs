@@ -8,7 +8,6 @@ use tracing::debug;
 use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 use crate::CLIENT;
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MatchingMode {
@@ -69,7 +68,7 @@ pub async fn generate_provider_values(
                 }
             }
         }
-     
+
         json["redirect_uris"] = json!(res_urls);
     }
 
@@ -82,7 +81,7 @@ pub async fn generate_provider_values(
         json["client_secret"] = json!(secret);
     }
     json["signing_key"] = json!(mapping.signing_key);
-    
+
     if !oidc_client_config.is_public {
         if let Some(federation_id) = federation_id {
             json["jwt_federation_providers"] = json!([federation_id]);
@@ -202,7 +201,7 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
                         url : item["url"].as_str()?.to_owned(),
                         matching_mode: serde_json::from_value(item["matching_mode"].clone()).ok()?,
                     }
-                        
+
                     )
                 })
                 .collect()

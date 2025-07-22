@@ -6,6 +6,7 @@ mod test;
 
 use crate::auth::authentik::provider::{check_set_federation_id, generate_provider, get_provider_id, update_provider};
 use crate::auth::generate_secret;
+use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
 use app::{check_app_result, compare_app_provider, get_app};
@@ -17,7 +18,6 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
-use std::sync::Mutex;
 use tracing::{debug, info};
 
 #[derive(Debug, Parser, Clone)]
@@ -251,6 +251,7 @@ async fn get_mappings_uuids(
     search_key: &Vec<String>,
     conf: &AuthentikConfig,
 ) -> Vec<String> {
+    // TODO: async iter to collect
     let mut result: Vec<String> = vec![];
     for key in search_key {
         result.push(
