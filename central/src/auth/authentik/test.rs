@@ -2,7 +2,7 @@ use crate::auth::authentik::app::{check_app_result, compare_app_provider, genera
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
 use crate::auth::authentik::{
-    combine_app_provider, get_application, get_uuid, validate_application, AuthentikConfig,
+    client_type, create_app_provider, get_app, get_uuid, validate_app, AuthentikConfig,
 };
 use crate::CLIENT;
 use beam_lib::reqwest::{self, Error, StatusCode, Url};
@@ -19,32 +19,30 @@ pub fn setup_authentik() -> reqwest::Result<(AuthentikConfig)> {
         .with_test_writer()
         .try_init();
     let token = "".to_owned();
-    Ok((
-        AuthentikConfig {
-            authentik_url: "http://localhost:9000".parse().unwrap(),
-            authentik_service_api_key: token.clone(),
-            authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
-            authentik_property_names: vec![
-                "allgroups".into(),
-                "authentik default OAuth Mapping: OpenID 'openid'".into(),
-                "authentik default OAuth Mapping: OpenID 'profile'".into(),
-                "authentik default OAuth Mapping: Proxy outpost".into(),
-                "authentik default OAuth Mapping: OpenID 'email'".into(),
-            ],
-            authentik_federation_names: vec![
-                "DKFZ Account".into(),
-                "Helmholtz ID".into(),
-                "Login with Institutional Account (DFN-AAI)".into(),
-                "Local Account".into()
-            ],
-        }
-    ))
+    Ok((AuthentikConfig {
+        authentik_url: "http://localhost:9000".parse().unwrap(),
+        authentik_service_api_key: token.clone(),
+        authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
+        authentik_property_names: vec![
+            "allgroups".into(),
+            "authentik default OAuth Mapping: OpenID 'openid'".into(),
+            "authentik default OAuth Mapping: OpenID 'profile'".into(),
+            "authentik default OAuth Mapping: Proxy outpost".into(),
+            "authentik default OAuth Mapping: OpenID 'email'".into(),
+        ],
+        authentik_federation_names: vec![
+            "DKFZ Account".into(),
+            "Helmholtz ID".into(),
+            "Login with Institutional Account (DFN-AAI)".into(),
+            "Local Account".into(),
+        ],
+    }))
 }
 
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
 async fn test_create_client() -> anyhow::Result<()> {
-    let  conf = setup_authentik()?;
+    let conf = setup_authentik()?;
     let name = "secondtest";
     // public client
     let client_config = OIDCConfig {
@@ -59,19 +57,17 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+        dbg!(create_app_provider(name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };
 
-    let provider_pk = get_provider(
-        &client_config.client_type(name),
-        &conf
-    )
+    let provider_pk = get_provider(&client_type(&client_config, name), &conf)
         .await?
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
+    debug!("Provider: {:?}", provider_pk);
     // private client
     let client_config = OIDCConfig {
         is_public: false,
@@ -85,11 +81,33 @@ async fn test_create_client() -> anyhow::Result<()> {
         ],
     };
     let (SecretResult::Created(pw) | SecretResult::AlreadyExisted(pw)) =
-        dbg!(combine_app_provider(name, &client_config, &conf).await?)
+        dbg!(create_app_provider(name, &client_config, &conf).await?)
     else {
         panic!("Not created or existed")
     };
 
+    Ok(())
+}
+
+
+#[ignore = "Requires setting up a authentik"]
+#[tokio::test]
+async fn test_validate_client() -> anyhow::Result<()> {
+    let conf = setup_authentik()?;
+    let name = "secondtest";
+    // public client
+    let client_config = OIDCConfig {
+        is_public: true,
+        redirect_urls: vec![
+            "http://foo/bar".into(),
+            "http://verbis/test".into(),
+            "http://dkfz/verbis/test".into(),
+            "http://dkfz.verbis/*".into(),
+            "https://e000-nb000.inet.dkfz-heidelberg.de/opal/*".into(),
+        ],
+    };
+    let res = compare_app_provider(name, &client_config, "", &conf).await?;
+    debug!("Validate: {res}");
     Ok(())
 }
 
@@ -162,25 +180,6 @@ async fn create_property() {
 
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
-async fn test_validate_client() -> anyhow::Result<()> {
-    let conf = setup_authentik()?;
-    let name = "air";
-    // public client
-    let client_config = OIDCConfig {
-        is_public: true,
-        redirect_urls: vec![
-            "http://foo/bar".into(),
-            "http://verbis/test".into(),
-            "http://dkfz/verbis/test".into(),
-        ],
-    };
-    let res = compare_app_provider(name, &client_config, "", &conf).await?;
-    debug!("Validate: {res}");
-    Ok(())
-}
-
-#[ignore = "Requires setting up a authentik"]
-#[tokio::test]
 async fn test_patch_provider() -> anyhow::Result<()> {
     let conf = setup_authentik()?;
     let name = "dark";
@@ -194,8 +193,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         ],
     };
     let pk_id = get_provider_id(name, &conf).await.unwrap();
-    let generated_provider =
-        generate_provider_values(name, &client_config, "", &conf).await?;
+    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None).await?;
     debug!("{:#?}", generated_provider);
 
     let res = CLIENT
@@ -213,13 +211,9 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         .expect("We know the provider already exists so updating should be successful");
     debug!("Updated:  {:#?}", res);
     debug!("Provider {name} updated");
-    debug!(
-        "App now: {:#?}",
-        get_application(name, &conf).await?
-    );
+    debug!("App now: {:#?}", get_app(name, &conf).await?);
     Ok(())
 }
-
 
 #[derive(Deserialize, Serialize, Debug)]
 struct Token {
@@ -262,4 +256,5 @@ async fn provider_check() {
         .get("pk")
         .and_then(|v| v.as_i64())
         .unwrap();
+    debug!("Provider: {:?}", provider_pk);
 }

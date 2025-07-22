@@ -33,7 +33,6 @@ pub async fn post_group(name: &str, conf: &AuthentikConfig) -> anyhow::Result<()
         .await?;
     match res.status() {
         StatusCode::CREATED => info!("Created group {name}"),
-        StatusCode::OK => info!("Created group {name}"),
         StatusCode::BAD_REQUEST => info!("Group {name} already existed"),
         s => anyhow::bail!(
             "Unexpected statuscode {s} while creating group {name}: {:#?}",
