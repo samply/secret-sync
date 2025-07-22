@@ -41,20 +41,6 @@ pub struct AuthentikConfig {
     #[clap(long, env, default_value = "Logged out of application" )]
     pub authentik_flow_invalidation: String,
 }
-impl Default for AuthentikConfig {
-    fn default() -> Self {
-        AuthentikConfig {
-            authentik_url: Url::parse("http://localhost:9000").unwrap(),
-            authentik_service_api_key: String::new(),
-            authentik_groups_per_bh: vec![],
-            authentik_property_names: vec![],
-            authentik_federation_names: vec![],
-            authentik_crypto_signing_key: "authentik_hs265".to_string(),
-            authentik_flow_auth: "Authorize Application".to_string(),
-            authentik_flow_invalidation: "Logged out of application".to_string(),
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlowPropertymapping {
