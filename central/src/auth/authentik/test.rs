@@ -37,8 +37,8 @@ pub fn setup_authentik() -> reqwest::Result<AuthentikConfig> {
             "Local Account".into(),
         ],
         authentik_flow_auth: "Authorize Application".into(),
-        authentik_crypto_signing_key: "Logged out of application".into(),
-        authentik_flow_invalidation: "authentik Self-signed Certificate".into(),
+        authentik_crypto_signing_key: "authentik Self-signed Certificate".into(),
+        authentik_flow_invalidation: "Logged out of application".into(),
     })
 }
 
