@@ -22,6 +22,24 @@ struct GitlabConfig {
     pub gitlab_api_access_token: String,
 }
 
+fn build_gitlab_repo_path(template: &str, site: &ProxyId) -> Result<String, String> {
+    let site = site.as_ref().split('.').nth(0).unwrap();
+    let placeholder_count = template.matches('#').count();
+    
+    if placeholder_count == 2 {
+        // Split app_id on first '-' for two placeholders
+        if let Some((before_dash, after_dash)) = site.split_once('-') {
+            Ok(template
+                .replacen('#', before_dash, 1)
+                .replacen('#', after_dash, 1))
+        } else {
+            Err(format!("Proxy ID '{}' does not contain '-' required for two-placeholder template '{}'", site, template))
+        }
+    } else {
+        Ok(template.replace('#', site))
+    }
+}
+
 const ISO_DATE_FORMAT: &[BorrowedFormatItem<'_>] =
     time::macros::format_description!("[year]-[month]-[day]");
 time::serde::format_description!(iso_date_format, Date, ISO_DATE_FORMAT);
@@ -129,9 +147,7 @@ impl GitlabTokenProvider {
         gitlab_config: &GitlabConfig,
         action: &str,
     ) -> Result<Vec<TokenDetailsResponse>, String> {
-        let gitlab_repo = gitlab_config
-            .gitlab_repo_format
-            .replace('#', site.as_ref().split('.').nth(0).unwrap());
+        let gitlab_repo = build_gitlab_repo_path(&gitlab_config.gitlab_repo_format, site)?;
 
         // List active tokens with the name "Secret Sync Token for {site}"
         let response = self
@@ -177,9 +193,7 @@ impl GitlabTokenProvider {
         gitlab_config: &GitlabConfig,
         current_token: &str,
     ) -> Result<bool, String> {
-        let gitlab_repo = gitlab_config
-            .gitlab_repo_format
-            .replace('#', site.as_ref().split('.').nth(0).unwrap());
+        let gitlab_repo = build_gitlab_repo_path(&gitlab_config.gitlab_repo_format, site)?;
 
         // Simulate a git fetch to check if the token is active
         let response = self
@@ -233,9 +247,7 @@ impl GitlabTokenProvider {
         site: &ProxyId,
         gitlab_config: &GitlabConfig,
     ) -> Result<SecretResult, String> {
-        let gitlab_repo = gitlab_config
-            .gitlab_repo_format
-            .replace('#', site.as_ref().split('.').nth(0).unwrap());
+        let gitlab_repo = build_gitlab_repo_path(&gitlab_config.gitlab_repo_format, site)?;
 
         // Find the token with the latest expiration date
         if let Some(token) = self
