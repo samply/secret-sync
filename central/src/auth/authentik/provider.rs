@@ -1,3 +1,5 @@
+use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
+use crate::CLIENT;
 use anyhow::{Context, Ok};
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
@@ -5,8 +7,6 @@ use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::collections::HashSet;
 use tracing::debug;
-use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
-use crate::CLIENT;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -44,29 +44,20 @@ pub async fn generate_provider_values(
     if !oidc_client_config.redirect_urls.is_empty() {
         let mut res_urls: HashSet<RedirectURIS> = HashSet::new();
         for url in &oidc_client_config.redirect_urls {
-            if !is_strict_url_contained(url, &res_urls) {
-                if is_regex_uri(url) {
-                    res_urls.insert(RedirectURIS {
-                        matching_mode: MatchingMode::Strict,
-                        url: convert_to_strict_for_regex(url),
-                    });
-                    res_urls.insert(RedirectURIS {
-                        matching_mode: MatchingMode::Regex,
-                        url: convert_to_regex_url(url),
-                    });
-                } else {
-                    if url.ends_with("/oauth2-idm/callback") && !oidc_client_config.is_public {
-                        res_urls.insert(RedirectURIS {
-                            matching_mode: MatchingMode::Strict,
-                            url: expand_redirect_url(url),
-                        });
-                    }
-                    res_urls.insert(RedirectURIS {
-                        matching_mode: MatchingMode::Strict,
-                        url: url.to_owned(),
-                    });
-                }
+            if is_regex_uri(url) {
+                res_urls.insert(RedirectURIS {
+                    matching_mode: MatchingMode::Strict,
+                    url: convert_to_strict_for_regex(url),
+                });
+                res_urls.insert(RedirectURIS {
+                    matching_mode: MatchingMode::Regex,
+                    url: convert_to_regex_url(url),
+                });
             }
+            res_urls.insert(RedirectURIS {
+                matching_mode: MatchingMode::Strict,
+                url: url.to_owned(),
+            });
         }
 
         json["redirect_uris"] = json!(res_urls);
@@ -86,7 +77,9 @@ pub async fn generate_provider_values(
         if let Some(federation_id) = federation_id {
             json["jwt_federation_providers"] = json!([federation_id]);
         }
-    } else { json["jwt_federation_providers"] = json!([]); }
+    } else {
+        json["jwt_federation_providers"] = json!([]);
+    }
     Ok(json)
 }
 
@@ -136,10 +129,7 @@ pub async fn get_provider_id(client_id: &str, conf: &AuthentikConfig) -> Option<
     Some(target_value["results"][0]["pk"].as_i64()?.to_owned())
 }
 
-pub async fn get_provider(
-    client_id: &str,
-    conf: &AuthentikConfig,
-) -> anyhow::Result<Value> {
+pub async fn get_provider(client_id: &str, conf: &AuthentikConfig) -> anyhow::Result<Value> {
     let res = get_provider_id(client_id, conf).await;
     let pk = res.ok_or_else(|| anyhow::anyhow!("Failed to get a provider id"))?;
     let base_url = conf
@@ -171,13 +161,14 @@ pub async fn compare_provider(
         oidc_client_config,
         secret,
         conf,
-        get_provider_id(&flipped_client_type(oidc_client_config,client_name), conf).await,
+        get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await,
     )
     .await?;
     if oidc_client_config.is_public {
         Ok(provider_configs_match(&client, &wanted_client))
     } else {
-        Ok(provider_configs_match(&client, &wanted_client) && client["client_secret"] == wanted_client["client_secret"])
+        Ok(provider_configs_match(&client, &wanted_client)
+            && client["client_secret"] == wanted_client["client_secret"])
     }
 }
 
@@ -197,12 +188,11 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<RedirectURIS> {
             uris.iter()
                 .filter_map(|item| {
-                    Some(RedirectURIS{
-                        url : item["url"].as_str()?.to_owned(),
-                        matching_mode: serde_json::from_value(item["matching_mode"].clone()).ok()?,
-                    }
-
-                    )
+                    Some(RedirectURIS {
+                        url: item["url"].as_str()?.to_owned(),
+                        matching_mode: serde_json::from_value(item["matching_mode"].clone())
+                            .ok()?,
+                    })
                 })
                 .collect()
         };
@@ -249,12 +239,11 @@ pub async fn patch_provider_federation(
         .await?;
     debug!("Value search key {id}: set {federation_id}");
     // contains at the moment one id
-    match target_value
-        ["jwt_federation_providers"][0].as_i64() {
-        Some(_jwt_federation_providers) => {
-            Ok(())
-        },
-        None => { anyhow::bail!("No jwt federation_providers found") },
+    match target_value["jwt_federation_providers"][0].as_i64() {
+        Some(_jwt_federation_providers) => Ok(()),
+        None => {
+            anyhow::bail!("No jwt federation_providers found")
+        }
     }
 }
 
@@ -316,17 +305,6 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
         }
     }
     result_uri
-}
-// expand for opal /"callback" -> .inet.dkfz-heidelberg.de
-fn expand_redirect_url(url: &str) -> String {
-    if let Some(host_part) = url.strip_prefix("https://") {
-        if let Some((short_host, path)) = host_part.split_once('/') {
-            if !short_host.contains('.') {
-                return format!("https://{}.inet.dkfz-heidelberg.de/{}", short_host, path);
-            }
-        }
-    }
-    url.to_string()
 }
 
 fn is_strict_url_contained(target_url: &str, res_urls: &HashSet<RedirectURIS>) -> bool {
