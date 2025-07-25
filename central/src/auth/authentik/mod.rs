@@ -6,6 +6,7 @@ mod test;
 
 use crate::auth::authentik::provider::{check_set_federation_id, generate_provider, get_provider_id, update_provider};
 use crate::auth::generate_secret;
+use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
 use app::{check_app_result, compare_app_provider, get_app};
@@ -17,7 +18,6 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
-use std::sync::Mutex;
 use tracing::{debug, info};
 
 #[derive(Debug, Parser, Clone)]
@@ -34,6 +34,12 @@ pub struct AuthentikConfig {
     pub authentik_property_names: Vec<String>,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_federation_names: Vec<String>,
+    #[clap(long, env, default_value = "authentik Self-signed Certificate" )]
+    pub authentik_crypto_signing_key: String,
+    #[clap(long, env, default_value = "Authorize Application" )]
+    pub authentik_flow_auth: String,
+    #[clap(long, env, default_value = "Logged out of application" )]
+    pub authentik_flow_invalidation: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -50,23 +56,23 @@ impl FlowPropertymapping {
         if let Some(flow) = PROPERTY_MAPPING_CACHE.lock().unwrap().as_ref() {
             return Ok(flow.clone());
         }
-        let flow_auth = "Authorize Application";
-        let flow_invalidation = "Logged out of application";
-        let crypto_signing_key = "authentik Self-signed Certificate";
-        let property_keys = conf.authentik_property_names.clone();
-        let jwt_federation_sources = conf.authentik_federation_names.clone();
+        let flow_auth = &conf.authentik_flow_auth;
+        let flow_invalidation = &conf.authentik_flow_invalidation;
+        let crypto_signing_key = &conf.authentik_crypto_signing_key;
+        let property_keys = &conf.authentik_property_names;
+        let jwt_federation_sources = &conf.authentik_federation_names;
         //let flow_url = "/api/v3/flows/instances/?name=...";
         //let property_url = "/api/v3/propertymappings/all/?name=...";
-        let flow_url = conf.authentik_url.join("api/v3/flows/instances/").unwrap();
+        let flow_url = conf.authentik_url.join("api/v3/flows/instances/").expect("API endpoint not valid");
         let signing_key_url = conf
             .authentik_url
             .join("api/v3/crypto/certificatekeypairs/")
-            .unwrap();
+            .expect("API endpoint not valid");
         let property_url = conf
             .authentik_url
             .join("api/v3/propertymappings/all/")
-            .unwrap();
-        let federation_url = conf.authentik_url.join("api/v3/sources/all/").unwrap();
+            .expect("API endpoint not valid");
+        let federation_url = conf.authentik_url.join("api/v3/sources/all/").expect("API endpoint not valid");
         let property_mapping = get_mappings_uuids(&property_url, property_keys, conf).await;
         let federation_mapping =
             get_mappings_uuids(&federation_url, jwt_federation_sources, conf).await;
@@ -228,9 +234,10 @@ async fn get_uuid(target_url: &Url, search_name: &str, conf: &AuthentikConfig) -
 
 async fn get_mappings_uuids(
     target_url: &Url,
-    search_key: Vec<String>,
+    search_key: &Vec<String>,
     conf: &AuthentikConfig,
 ) -> Vec<String> {
+    // TODO: async iter to collect
     let mut result: Vec<String> = vec![];
     for key in search_key {
         result.push(

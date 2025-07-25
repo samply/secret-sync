@@ -61,15 +61,26 @@ services:
       - KEYCLOAK_SECRET=my_secret
       # Extra service account roles for the private client
       - KEYCLOAK_SERVICE_ACCOUNT_ROLES=query-users,query-groups
+      # generated groups
+      - KEYCLOAK_GROUPS_PER_BH="DKTK_CCP_#,Test_#"
 
       # Optional authentik parameters
       - AUTHENTIK_URL=http://authentik:9000
       # API Access Token 
-      - SERVICE_ACCOUNT_TOKEN=secret_token
-      # Proppertymapping names to set as uuid
+      - AUTHENTIK_SERVICE_API_KEY=secret_token
+      # Proppertymapping names
       - AUTHENTIK_PROPERTY_NAMES="allgroups,defauld groups"
-      # Federation source names to set as uuid 
+      # Federation source names
       - AUTHENTIK_FEDERATION_NAMES="Local Account,Example Accounts"
+      # generated groups
+      - AUTHENTIK_GROUPS_PER_BH="DKTK_CCP_#,Test_#"
+      # (Optional) authorization flow default:
+      - AUTHENTIK_FLOW_AUTH="Authorize Application"
+      # (Optional) signing key default:
+      - AUTHENTIK_CRYPTO_SIGNING_KEY="authentik Self-signed Certificate"
+      # (Optional) invalidation flow default:
+      - AUTHENTIK_FLOW_INVALIDATION="Logged out of application"
+
 
       # Optional GitLab parameters. More than one GitLab server can be configured by using different prefixes like "verbis" in this example.
       # The base URL for API calls, e.g. "https://gitlab.com/".
