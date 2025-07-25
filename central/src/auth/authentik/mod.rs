@@ -34,7 +34,7 @@ pub struct AuthentikConfig {
     pub authentik_property_names: Vec<String>,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_federation_names: Vec<String>,
-    #[clap(long, env, default_value = "authentik_hs265" )]
+    #[clap(long, env, default_value = "authentik Self-signed Certificate" )]
     pub authentik_crypto_signing_key: String,
     #[clap(long, env, default_value = "Authorize Application" )]
     pub authentik_flow_auth: String,

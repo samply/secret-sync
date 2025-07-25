@@ -70,7 +70,7 @@ services:
       - AUTHENTIK_SERVICE_API_KEY=secret_token
       # Proppertymapping names
       - AUTHENTIK_PROPERTY_NAMES="allgroups,defauld groups"
-      # Federation source names 
+      # Federation source names
       - AUTHENTIK_FEDERATION_NAMES="Local Account,Example Accounts"
       # generated groups
       - AUTHENTIK_GROUPS_PER_BH="DKTK_CCP_#,Test_#"

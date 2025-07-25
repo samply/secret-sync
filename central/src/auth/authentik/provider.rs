@@ -306,9 +306,3 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
     }
     result_uri
 }
-
-fn is_strict_url_contained(target_url: &str, res_urls: &HashSet<RedirectURIS>) -> bool {
-    res_urls
-        .iter()
-        .any(|entry| entry.matching_mode == MatchingMode::Strict && entry.url == target_url)
-}
