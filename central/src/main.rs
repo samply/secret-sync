@@ -1,8 +1,9 @@
-use std::{collections::HashSet, fs, time::Duration};
+use std::{fs, time::Duration};
 
 use beam_lib::{reqwest::Client, AppId, BeamClient, BlockingOptions, TaskRequest, TaskResult};
 use clap::Parser;
 use config::{Config, OIDCProvider};
+use futures::future::JoinAll;
 use gitlab::GitlabTokenProvider;
 use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
@@ -34,18 +35,26 @@ pub static ICINGA_CLIENT: Lazy<Option<IcingaClient>> = Lazy::new(try_create_icin
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    // TODO: Remove once beam feature/stream-tasks is merged
-    let mut seen = HashSet::new();
     let block_one = BlockingOptions::from_count(1);
     // TODO: Fast shutdown
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
-            Ok(tasks) => tasks.into_iter().for_each(|task| {
-                if !seen.contains(&task.id) {
-                    seen.insert(task.id);
+            Ok(tasks) => {
+                tasks.into_iter().map(|task| {
+                    let claimed = TaskResult {
+                        from: CONFIG.beam_id.clone(),
+                        to: vec![task.from.clone()],
+                        task: task.id,
+                        status: beam_lib::WorkStatus::Claimed, body: (), metadata: ().into()
+                    };
                     tokio::spawn(handle_task(task));
-                }
-            }),
+                    async move {
+                        if let Err(e) = BEAM_CLIENT.put_result(&claimed, &claimed.task).await {
+                            warn!("Failed to claim task from {}: {e}", claimed.to[0]);
+                        }
+                    }
+                }).collect::<JoinAll<_>>().await;
+            },
             Err(beam_lib::BeamError::ReqwestError(e)) if e.is_connect() => {
                 warn!(
                     "Failed to connect to beam proxy on {}. Retrying in 30s",
