@@ -98,7 +98,7 @@ impl OIDCProvider {
                     .await
                     .map_err(|e| {
                         warn!("Failed to validate client {name}: {e:#?}");
-                        "Failed to validate client. See upstrean logs.".into()
+                        "Failed to validate client. See upstream logs.".into()
                     })
             }
             OIDCProvider::Authentik(conf) => {
@@ -106,7 +106,7 @@ impl OIDCProvider {
                     .await
                     .map_err(|e| {
                         warn!("Failed to validate client {name}: {e:#?}");
-                        "Failed to validate client. See upstrean logs.".into()
+                        "Failed to validate client. See upstream logs.".into()
                     })
             }
         }

@@ -1,4 +1,4 @@
-use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
+use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping, MatchResult};
 use crate::CLIENT;
 use anyhow::{Context, Ok};
 use reqwest::Response;
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::collections::HashSet;
-use tracing::debug;
+use tracing::{debug, info};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -164,15 +164,11 @@ pub async fn compare_provider(
         get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await,
     )
     .await?;
-    if oidc_client_config.is_public {
-        Ok(provider_configs_match(&client, &wanted_client))
-    } else {
-        Ok(provider_configs_match(&client, &wanted_client)
-            && client["client_secret"] == wanted_client["client_secret"])
-    }
+        Ok(provider_configs_match(&client, &wanted_client, oidc_client_config.is_public))
 }
 
-pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
+pub fn provider_configs_match(a: &Value, b: &Value, is_public: bool) -> bool {
+    let mut differences: Vec<String> = Vec::new();
     let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| {
         a.get(key)
             .and_then(Value::as_array)
@@ -204,15 +200,39 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
             _ => false,
         }
     };
-    a["name"] == b["name"]
-        && a["client_secret"] == b["client_secret"]
-        && a["sub_mode"] == b["sub_mode"]
-        && a["authorization_flow"] == b["authorization_flow"]
-        && a["invalidation_flow"] == b["invalidation_flow"]
-        && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v))
-        && redirect_url_match()
+    if a["name"] != b["name"] {
+        differences.push("name".to_string());
+    }
+    if !is_public && a["client_secret"] != b["client_secret"] {
+        differences.push("secret".to_string());
+    }
+    if a["sub_mode"] != b["sub_mode"] {
+        differences.push("sub_mode".to_string());
+    }
+    if a["authorization_flow"] != b["authorization_flow"] {
+        differences.push("authorization_flow".to_string());
+    }
+    if a["invalidation_flow"] != b["invalidation_flow"] {
+        differences.push("invalidation_flow".to_string());
+    }
+    if !includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v)) {
+        differences.push("property_mappings".to_string());
+    }
+    if !includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v)) {
+        differences.push("jwt_federation_sources".to_string());
+    }
+    if !includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v)) {
+        differences.push("jwt_federation_providers".to_string());
+    }
+    if !redirect_url_match() {
+        differences.push("redirect_url".to_string());
+    }
+    if differences.is_empty() { 
+        true
+    } else { 
+        info!("Provider does not match with: {differences:?}");
+        false
+    }
 }
 
 pub async fn patch_provider_federation(
