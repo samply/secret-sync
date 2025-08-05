@@ -198,7 +198,9 @@ pub fn provider_configs_match(a: &Value, b: &Value, is_public: bool) -> bool {
         };
         match (a_uris, b_uris) {
             (Some(a_uris), Some(b_uris)) => {
-                extract_redirect_obj(a_uris) == extract_redirect_obj(b_uris)
+                let a_set = extract_redirect_obj(a_uris);
+                let b_set = extract_redirect_obj(b_uris);
+                b_set.is_subset(&a_set)
             }
             (None, None) => true,
             (Some(_),None) => true,
