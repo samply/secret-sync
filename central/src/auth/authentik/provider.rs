@@ -167,6 +167,10 @@ pub async fn compare_provider(
         Ok(provider_configs_match(&client, &wanted_client, oidc_client_config.is_public))
 }
 
+/*
+ a: must be current provider
+ b: generated provider from config
+ */
 pub fn provider_configs_match(a: &Value, b: &Value, is_public: bool) -> bool {
     let mut differences: Vec<String> = Vec::new();
     let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| {
@@ -197,7 +201,8 @@ pub fn provider_configs_match(a: &Value, b: &Value, is_public: bool) -> bool {
                 extract_redirect_obj(a_uris) == extract_redirect_obj(b_uris)
             }
             (None, None) => true,
-            _ => false,
+            (Some(_),None) => true,
+            (None, Some(_)) => false,
         }
     };
     if a["name"] != b["name"] {
