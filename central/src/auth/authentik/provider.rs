@@ -1,4 +1,4 @@
-use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping, MatchResult};
+use crate::auth::authentik::{flipped_client_type, AuthentikConfig, FlowPropertymapping};
 use crate::CLIENT;
 use anyhow::{Context, Ok};
 use reqwest::Response;
