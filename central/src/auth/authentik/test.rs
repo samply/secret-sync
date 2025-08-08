@@ -20,7 +20,7 @@ pub fn setup_authentik() -> reqwest::Result<AuthentikConfig> {
         .try_init();
     let token = "".to_owned();
     Ok(AuthentikConfig {
-        authentik_url: "http://localhost:9000".parse().unwrap(),
+        authentik_url: "".parse().unwrap(),
         authentik_service_api_key: token.clone(),
         authentik_groups_per_bh: vec!["DKTK_CCP_#".into(), "DKTK_CCP_#_Verwalter".into()],
         authentik_property_names: vec![
@@ -107,6 +107,7 @@ async fn test_validate_client() -> anyhow::Result<()> {
             "http://dkfz/verbis/test".into(),
             "http://dkfz.verbis/*".into(),
             "https://e000-nb000.inet.dkfz-heidelberg.de/opal/*".into(),
+            "https://e000-nb000/oauth2-idm/callback".into(),
         ],
     };
     let res = compare_app_provider(name, &client_config, "", &conf).await?;
