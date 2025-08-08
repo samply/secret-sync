@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::collections::HashSet;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -234,10 +234,11 @@ pub fn provider_configs_match(a: &Value, b: &Value, is_public: bool) -> bool {
     if !redirect_url_match() {
         differences.push("redirect_url".to_string());
     }
-    if differences.is_empty() { 
+    if differences.is_empty() {
+        info!("No differences found for provider {:?}", a["name"]);
         true
-    } else { 
-        info!("Provider does not match with: {differences:?}");
+    } else {
+        warn!("Provider does not match with: {:?}", differences);
         false
     }
 }
