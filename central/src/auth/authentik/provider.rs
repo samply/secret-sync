@@ -335,5 +335,5 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
 }
 
 fn show_differents_log(key: &str, current_provider: Value, generated_provider: Value){
-    info!("Provider {}: {:?} changed {:?}", key, current_provider, generated_provider);
+    info!("Provider {}: {:?} changed to {:?}", key, current_provider, generated_provider);
 }
