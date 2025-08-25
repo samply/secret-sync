@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::collections::HashSet;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -164,27 +164,22 @@ pub async fn compare_provider(
         get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await,
     )
     .await?;
-    if oidc_client_config.is_public {
-        Ok(provider_configs_match(&client, &wanted_client))
-    } else {
-        Ok(provider_configs_match(&client, &wanted_client)
-            && client["client_secret"] == wanted_client["client_secret"])
-    }
+        Ok(provider_configs_match(&client, &wanted_client, oidc_client_config.is_public))
 }
 
-pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
+pub fn provider_configs_match(current_provider: &Value, generated_provider: &Value, is_public: bool) -> bool {
     let includes_other_json_array = |key, comparator: &dyn Fn(_, _) -> bool| {
-        a.get(key)
+        current_provider.get(key)
             .and_then(Value::as_array)
             .is_some_and(|a_values| {
-                b.get(key)
+                generated_provider.get(key)
                     .and_then(Value::as_array)
                     .is_some_and(|vec| vec.iter().all(|v| comparator(a_values, v)))
             })
     };
     let redirect_url_match = || {
-        let a_uris = a["redirect_uris"].as_array();
-        let b_uris = b["redirect_uris"].as_array();
+        let a_uris = current_provider["redirect_uris"].as_array();
+        let b_uris = generated_provider["redirect_uris"].as_array();
         let extract_redirect_obj = |uris: &Vec<serde_json::Value>| -> HashSet<RedirectURIS> {
             uris.iter()
                 .filter_map(|item| {
@@ -198,21 +193,53 @@ pub fn provider_configs_match(a: &Value, b: &Value) -> bool {
         };
         match (a_uris, b_uris) {
             (Some(a_uris), Some(b_uris)) => {
-                extract_redirect_obj(a_uris) == extract_redirect_obj(b_uris)
+                let a_set = extract_redirect_obj(a_uris);
+                let b_set = extract_redirect_obj(b_uris);
+                b_set.is_subset(&a_set)
             }
             (None, None) => true,
-            _ => false,
+            (Some(_),None) => true,
+            (None, Some(_)) => false,
         }
     };
-    a["name"] == b["name"]
-        && a["client_secret"] == b["client_secret"]
-        && a["sub_mode"] == b["sub_mode"]
-        && a["authorization_flow"] == b["authorization_flow"]
-        && a["invalidation_flow"] == b["invalidation_flow"]
-        && includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v))
-        && includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v))
-        && redirect_url_match()
+    let mut ok = true;
+    if current_provider["name"] != generated_provider["name"] { 
+        show_differents_log("name", current_provider["name"].clone(), generated_provider["name"].clone());
+        ok = false;
+    }
+    if !is_public && current_provider["client_secret"] != generated_provider["client_secret"] {
+        show_differents_log("client_secret", current_provider["client_secret"].clone(), generated_provider["client_secret"].clone());
+        ok = false;
+    }
+    if current_provider["sub_mode"] != generated_provider["sub_mode"] {
+        show_differents_log("sub_mode", current_provider["sub_mode"].clone(), generated_provider["sub_mode"].clone());
+        ok = false;
+    }
+    if current_provider["authorization_flow"] != generated_provider["authorization_flow"] {
+        show_differents_log("authorization_flow", current_provider["authorization_flow"].clone(), generated_provider["authorization_flow"].clone());
+        ok = false;
+    }
+    if current_provider["invalidation_flow"] != generated_provider["invalidation_flow"] {
+        show_differents_log("invalidation_flow", current_provider["invalidation_flow"].clone(), generated_provider["invalidation_flow"].clone());
+        ok = false;
+    }
+    if !includes_other_json_array("property_mappings", &|a_v, v| a_v.contains(v)) {
+        show_differents_log("property_mappings", current_provider["property_mappings"].clone(), generated_provider["property_mappings"].clone());
+        ok = false;
+    }
+    if !includes_other_json_array("jwt_federation_sources", &|a_v, v| a_v.contains(v)) {
+        show_differents_log("jwt_federation_sources", current_provider["jwt_federation_sources"].clone(), generated_provider["jwt_federation_sources"].clone());
+        ok = false;
+    }
+    if !includes_other_json_array("jwt_federation_providers", &|a_v, v| a_v.contains(v)) {
+        show_differents_log("jwt_federation_providers", current_provider["jwt_federation_providers"].clone(), generated_provider["jwt_federation_providers"].clone());
+        ok = false;
+    }
+    if !redirect_url_match() {
+        show_differents_log("redirect_uris", current_provider["redirect_uris"].clone(), generated_provider["redirect_uris"].clone());
+        ok = false;
+    }
+    ok
 }
 
 pub async fn patch_provider_federation(
@@ -305,4 +332,8 @@ fn convert_to_strict_for_regex(uri: &str) -> String {
         }
     }
     result_uri
+}
+
+fn show_differents_log(key: &str, current_provider: Value, generated_provider: Value){
+    info!("Provider {}: {:?} changed to {:?}", key, current_provider, generated_provider);
 }
