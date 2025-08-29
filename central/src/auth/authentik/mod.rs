@@ -144,7 +144,7 @@ pub async fn create_app_provider(
             check_set_federation_id(&name, provider_id, conf, oidc_client_config).await?;
             debug!("{:?}", provider_id);
             info!("Provider for {provider_name} created.");
-            if check_app_result(&client_id, provider_id, conf).await? {
+            if check_app_result(&client_id, name, provider_id, conf).await? {
                 Ok(SecretResult::Created(secret))
             } else {
                 bail!(
@@ -163,6 +163,7 @@ pub async fn create_app_provider(
                 info!("Provider {app} existed.");
                 if check_app_result(
                     &client_id,
+                    name,
                     conflicting_provider["pk"]
                         .as_i64()
                         .expect("provider id has to be present"),
@@ -194,6 +195,7 @@ pub async fn create_app_provider(
                 info!("Provider {app} updated");
                 if check_app_result(
                     &client_id,
+                    name,
                     conflicting_provider["pk"]
                         .as_i64()
                         .expect("app id - pk must be present"),

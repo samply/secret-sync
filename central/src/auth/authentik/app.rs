@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use shared::OIDCConfig;
 use std::i64;
 use tracing::{debug, info};
-
+use crate::auth::authentik::group::group_binding;
 use crate::CLIENT;
 
 use super::{client_type, provider::{compare_provider, get_provider_id}, AuthentikConfig};
@@ -13,7 +13,7 @@ pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
         "name": client_id,
         "slug": client_id,
         "provider": provider,
-        "group": client_id.split('-').next().expect("group name does not contain - ")
+        "group": "secret-sync"
     })
 }
 
@@ -55,12 +55,14 @@ pub async fn update_app(
 
 pub async fn check_app_result(
     client_id: &str,
+    name: &str,
     provider_pk: i64,
     conf: &AuthentikConfig
 ) -> anyhow::Result<bool> {
     let res = generate_app(provider_pk, client_id, conf).await?;
     match res.status() {
         StatusCode::CREATED => {
+            group_binding(client_id, name, conf).await?;
             info!("Application for {client_id} created.");
             Ok(true)
         }
@@ -70,16 +72,19 @@ pub async fn check_app_result(
                 &conflicting_app,
                 &generate_app_values(provider_pk, client_id),
             ) {
+                group_binding(client_id, name, conf).await?;
                 info!("Application {client_id} exists.");
                 Ok(true)
             } else {
                 info!("Application for {client_id} is updated.");
-                update_app(
+                let status = update_app(
                     client_id,
                     provider_pk,
                     conflicting_app["name"].as_str().expect("app name has to be present"),
                     conf,
-                ).await
+                ).await;
+                group_binding(client_id, name, conf).await?;
+                status
             }
         }
         s => anyhow::bail!("Unexpected statuscode {s} while creating authentik client. {res:?}"),
@@ -101,6 +106,24 @@ pub async fn get_app(
         .await?
         .json()
         .await
+}
+
+pub async fn get_app_pk(client_id: &str, conf: &AuthentikConfig) -> Option<String> {
+    let query_url = conf.authentik_url
+        .join(&format!("api/v3/core/applications/{client_id}/"))
+        .expect("Error parsing app url");
+    let target_value: serde_json::Value = CLIENT
+        .get(query_url.to_owned())
+        .bearer_auth(&conf.authentik_service_api_key)
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    debug!("Value search key {client_id} app: {:?}", &target_value);
+    // pk is the id for this result
+    Some(target_value["results"][0]["pk"].as_str()?.to_owned())
 }
 
 // used only from validate in config
