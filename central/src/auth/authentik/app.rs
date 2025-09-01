@@ -123,7 +123,7 @@ pub async fn get_app_pk(client_id: &str, conf: &AuthentikConfig) -> Option<Strin
         .ok()?;
     debug!("Value search key {client_id} app: {:?}", &target_value);
     // pk is the id for this result
-    Some(target_value["results"][0]["pk"].as_str()?.to_owned())
+    Some(target_value["pk"].as_str()?.to_owned())
 }
 
 // used only from validate in config

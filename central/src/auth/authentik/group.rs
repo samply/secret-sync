@@ -41,7 +41,12 @@ pub async fn group_binding(
 ) -> anyhow::Result<()> {
     let name = capitalize_name(name);
     for group in &conf.authentik_groups_per_bh {
-        create_group_binding(client_id, &group.replace('#', &name), conf).await?;
+        if !check_group_binding(client_id, &group.replace('#', &name), conf).await {
+            create_group_binding(client_id, &group.replace('#', &name), conf).await?;    
+        }
+    }
+    if !check_group_binding(client_id, "verbis-all", conf).await {
+        create_group_binding(client_id, "verbis-all", conf).await?;
     }
     Ok(())
 }
@@ -60,8 +65,12 @@ pub async fn create_group_binding(
     name: &str,
     conf: &AuthentikConfig,
 ) -> anyhow::Result<()> {
-    let group_id = get_group_id(name, conf).await.ok_or_else(|| anyhow::anyhow!("Group {name} not found"))?;
-    let app_id = get_app_pk(client_id, conf).await.ok_or_else(|| anyhow::anyhow!("Application {client_id} not found"))?;
+    let group_id = get_group_id(name, conf)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Group {name} not found"))?;
+    let app_id = get_app_pk(client_id, conf)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Application {client_id} not found"))?;
     let json = json!({
         "group": group_id,
         "target": app_id,
@@ -82,6 +91,50 @@ pub async fn create_group_binding(
         ),
     }
     Ok(())
+}
+
+pub async fn check_group_binding(
+    client_id: &str,
+    name: &str,
+    conf: &AuthentikConfig,
+) -> bool {
+    let app_id = match get_app_pk(client_id, conf)
+        .await {
+        Some(app) => app,
+        None => return false,
+    };
+    let query_url = conf
+        .authentik_url
+        .join("api/v3/policies/bindings/")
+        .expect("API Endpoint for policy binding should be present");
+    
+    let resp = match CLIENT
+        .get(query_url)
+        .query(&[("target", &app_id)])
+        .bearer_auth(&conf.authentik_service_api_key)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    let target_value: serde_json::Value = match resp.json().await {
+        Ok(val) => val,
+        Err(_) => return false,
+    };
+    debug!(
+        "Value search key {name} group bindings list: {:?}",
+        &target_value
+    );
+    let results = match target_value["results"].as_array() {
+        Some(arr) => arr,
+        None => return false,
+    };
+    let result_names: Vec<String> = results
+        .iter()
+        .filter_map(|item| item["group_obj"]["name"].as_str().map(|s| s.to_owned()))
+        .collect();
+    result_names.contains(&name.to_owned())
 }
 
 pub async fn get_group_id(name: &str, conf: &AuthentikConfig) -> Option<String> {
