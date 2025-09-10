@@ -197,7 +197,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         ],
     };
     let pk_id = get_provider_id(name, &conf).await.unwrap();
-    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None).await?;
+    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None, None).await?;
     debug!("{:#?}", generated_provider);
 
     let res = CLIENT

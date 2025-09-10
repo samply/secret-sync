@@ -4,9 +4,11 @@ mod provider;
 #[cfg(test)]
 mod test;
 
-use crate::auth::authentik::provider::{check_set_federation_id, generate_provider, get_provider_id, update_provider};
+use crate::auth::authentik::provider::{
+    check_set_federation_id, extract_redirect_obj, generate_provider, get_provider_id,
+    update_provider, RedirectURIS,
+};
 use crate::auth::generate_secret;
-use std::sync::Mutex;
 use crate::CLIENT;
 use anyhow::bail;
 use app::{check_app_result, compare_app_provider, get_app};
@@ -18,6 +20,8 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::{OIDCConfig, SecretResult};
+use std::collections::HashSet;
+use std::sync::Mutex;
 use tracing::{debug, info};
 
 #[derive(Debug, Parser, Clone)]
@@ -34,11 +38,11 @@ pub struct AuthentikConfig {
     pub authentik_property_names: Vec<String>,
     #[clap(long, env, value_parser, value_delimiter = ',', default_values_t = [] as [String; 0])]
     pub authentik_federation_names: Vec<String>,
-    #[clap(long, env, default_value = "authentik Self-signed Certificate" )]
+    #[clap(long, env, default_value = "authentik Self-signed Certificate")]
     pub authentik_crypto_signing_key: String,
-    #[clap(long, env, default_value = "Authorize Application" )]
+    #[clap(long, env, default_value = "Authorize Application")]
     pub authentik_flow_auth: String,
-    #[clap(long, env, default_value = "Logged out of application" )]
+    #[clap(long, env, default_value = "Logged out of application")]
     pub authentik_flow_invalidation: String,
 }
 
@@ -63,7 +67,10 @@ impl FlowPropertymapping {
         let jwt_federation_sources = &conf.authentik_federation_names;
         //let flow_url = "/api/v3/flows/instances/?name=...";
         //let property_url = "/api/v3/propertymappings/all/?name=...";
-        let flow_url = conf.authentik_url.join("api/v3/flows/instances/").expect("API endpoint not valid");
+        let flow_url = conf
+            .authentik_url
+            .join("api/v3/flows/instances/")
+            .expect("API endpoint not valid");
         let signing_key_url = conf
             .authentik_url
             .join("api/v3/crypto/certificatekeypairs/")
@@ -72,7 +79,10 @@ impl FlowPropertymapping {
             .authentik_url
             .join("api/v3/propertymappings/all/")
             .expect("API endpoint not valid");
-        let federation_url = conf.authentik_url.join("api/v3/sources/all/").expect("API endpoint not valid");
+        let federation_url = conf
+            .authentik_url
+            .join("api/v3/sources/all/")
+            .expect("API endpoint not valid");
         let property_mapping = get_mappings_uuids(&property_url, property_keys, conf).await;
         let federation_mapping =
             get_mappings_uuids(&federation_url, jwt_federation_sources, conf).await;
@@ -119,13 +129,7 @@ pub async fn create_app_provider(
         String::with_capacity(0)
     };
     let generated_provider =
-        generate_provider_values(
-            &client_id, 
-            oidc_client_config, 
-            &secret, 
-            conf, 
-            None,
-        ).await?;
+        generate_provider_values(&client_id, oidc_client_config, &secret, conf, None, None).await?;
     debug!("Provider Values: {:#?}", generated_provider);
     let provider_res = generate_provider(&generated_provider, conf).await?;
     // Create groups for this client
@@ -185,12 +189,28 @@ pub async fn create_app_provider(
                     );
                 }
             } else {
-                let res = update_provider(&generated_provider, &client_id, conf)
-                    .await?
-                    .status()
-                    .is_success()
-                    .then_some(SecretResult::AlreadyExisted(secret))
-                    .expect("We know the provider already exists so updating should be successful");
+                let current_redirect_uris: Option<HashSet<RedirectURIS>> = conflicting_provider
+                    ["redirect_uris"]
+                    .as_array()
+                    .map(|uris| extract_redirect_obj(&uris));
+                let res = update_provider(
+                    &generate_provider_values(
+                        &client_id,
+                        oidc_client_config,
+                        &secret,
+                        conf,
+                        None,
+                        current_redirect_uris,
+                    )
+                    .await?,
+                    &client_id,
+                    conf,
+                )
+                .await?
+                .status()
+                .is_success()
+                .then_some(SecretResult::AlreadyExisted(secret))
+                .expect("We know the provider already exists so updating should be successful");
                 info!("Provider {app} updated");
                 if check_app_result(
                     &client_id,
