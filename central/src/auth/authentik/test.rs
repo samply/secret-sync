@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::auth::authentik::app::{check_app_result, compare_app_provider, generate_app_values};
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
@@ -197,7 +198,7 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         ],
     };
     let pk_id = get_provider_id(name, &conf).await.unwrap();
-    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None).await?;
+    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None, HashSet::new()).await?;
     debug!("{:#?}", generated_provider);
 
     let res = CLIENT
