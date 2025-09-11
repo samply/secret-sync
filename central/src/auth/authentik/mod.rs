@@ -189,10 +189,11 @@ pub async fn create_app_provider(
                     );
                 }
             } else {
-                let current_redirect_uris: Option<HashSet<RedirectURIS>> = conflicting_provider
+                let current_redirect_uris: HashSet<RedirectURIS> = conflicting_provider
                     ["redirect_uris"]
                     .as_array()
-                    .map(|uris| extract_redirect_obj(&uris));
+                    .map(|uris| extract_redirect_obj(&uris))
+                    .unwrap_or_default();
                 let res = update_provider(
                     &generate_provider_values(
                         &client_id,

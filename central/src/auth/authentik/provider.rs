@@ -27,7 +27,7 @@ pub async fn generate_provider_values(
     secret: &str,
     conf: &AuthentikConfig,
     federation_id: Option<i64>,
-    current_redirect_uris: Option<HashSet<RedirectURIS>>,
+    current_redirect_uris: HashSet<RedirectURIS>,
 ) -> anyhow::Result<Value> {
     let mapping = FlowPropertymapping::new(conf).await?;
 
@@ -42,7 +42,7 @@ pub async fn generate_provider_values(
         "jwt_federation_sources": mapping.federation_mapping,
     });
 
-    let mut res_urls: HashSet<RedirectURIS> = current_redirect_uris.unwrap_or_default();
+    let mut res_urls: HashSet<RedirectURIS> = current_redirect_uris;
     if !oidc_client_config.redirect_urls.is_empty() {
         for url in &oidc_client_config.redirect_urls {
             if is_regex_uri(url) {
@@ -162,7 +162,7 @@ pub async fn compare_provider(
         secret,
         conf,
         get_provider_id(&flipped_client_type(oidc_client_config, client_name), conf).await,
-        None,
+        HashSet::new(),
     )
     .await?;
     Ok(provider_configs_match(
@@ -280,14 +280,9 @@ fn redirect_url_match(current_provider: &Value, generated_provider: &Value) -> b
     }
 }
 
-pub fn extract_redirect_obj(uris: &Vec<serde_json::Value>) -> HashSet<RedirectURIS> {
+pub fn extract_redirect_obj(uris: &[serde_json::Value]) -> HashSet<RedirectURIS> {
     uris.iter()
-        .filter_map(|item| {
-            Some(RedirectURIS {
-                url: item["url"].as_str()?.to_owned(),
-                matching_mode: serde_json::from_value(item["matching_mode"].clone()).ok()?,
-            })
-        })
+        .filter_map(|item| serde_json::from_value(item.clone()).ok())
         .collect()
 }
 
