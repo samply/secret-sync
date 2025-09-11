@@ -129,7 +129,7 @@ pub async fn create_app_provider(
         String::with_capacity(0)
     };
     let generated_provider =
-        generate_provider_values(&client_id, oidc_client_config, &secret, conf, None, None).await?;
+        generate_provider_values(&client_id, oidc_client_config, &secret, conf, None, HashSet::new()).await?;
     debug!("Provider Values: {:#?}", generated_provider);
     let provider_res = generate_provider(&generated_provider, conf).await?;
     // Create groups for this client
