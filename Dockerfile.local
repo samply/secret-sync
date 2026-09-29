@@ -14,7 +14,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --bin local
 
-FROM gcr.io/distroless/cc-debian12:debug AS runtime
+FROM gcr.io/distroless/cc-debian13:debug AS runtime
 COPY --from=proxy /usr/local/bin/beam-proxy /usr/local/bin/proxy
 COPY --from=builder /app/target/release/local /usr/local/bin/
 
