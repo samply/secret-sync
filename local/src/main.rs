@@ -175,7 +175,7 @@ async fn send_secret_request(
 }
 
 async fn wait_for_beam_proxy() -> beam_lib::Result<()> {
-    const MAX_RETRIRES: u8 = 15;
+    const MAX_RETRIRES: u8 = 30;
     let mut tries = 1;
     loop {
         match reqwest::get(format!("{BEAM_PROXY_URL}/v1/health")).await {
