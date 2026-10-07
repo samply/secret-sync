@@ -25,7 +25,7 @@ struct GitlabConfig {
 fn build_gitlab_repo_path(template: &str, site: &ProxyId) -> Result<String, String> {
     let site = site.as_ref().split('.').nth(0).unwrap();
     let placeholder_count = template.matches('#').count();
-    
+
     if placeholder_count == 2 {
         // Split app_id on first '-' for two placeholders
         if let Some((before_dash, after_dash)) = site.split_once('-') {
@@ -33,7 +33,10 @@ fn build_gitlab_repo_path(template: &str, site: &ProxyId) -> Result<String, Stri
                 .replacen('#', before_dash, 1)
                 .replacen('#', after_dash, 1))
         } else {
-            Err(format!("Proxy ID '{}' does not contain '-' required for two-placeholder template '{}'", site, template))
+            Err(format!(
+                "Proxy ID '{}' does not contain '-' required for two-placeholder template '{}'",
+                site, template
+            ))
         }
     } else {
         Ok(template.replace('#', site))

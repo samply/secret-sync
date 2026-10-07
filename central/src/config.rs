@@ -2,8 +2,8 @@ use std::{convert::Infallible, path::PathBuf};
 
 use beam_lib::{reqwest::Url, AppId};
 use clap::Parser;
-use tracing::{debug, info, warn};
 use shared::{OIDCConfig, RequestType, SecretResult};
+use tracing::{debug, info, warn};
 
 use crate::auth::{
     authentik::{self, AuthentikConfig},
@@ -57,12 +57,13 @@ impl OIDCProvider {
     ) -> Result<SecretResult, String> {
         let name = from.as_ref().split('.').nth(1).unwrap();
         match request_type {
-            RequestType::ValidateOrCreate(current) if self.validate_client(
-                name,
-                &current,
-                oidc_client_config,
-            ).await? => 
-                Ok(SecretResult::AlreadyValid),
+            RequestType::ValidateOrCreate(current)
+                if self
+                    .validate_client(name, &current, oidc_client_config)
+                    .await? =>
+            {
+                Ok(SecretResult::AlreadyValid)
+            }
             _ => self.create_client(name, oidc_client_config).await,
         }
     }
