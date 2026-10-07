@@ -43,7 +43,9 @@ services:
   central:
     build:
       context: ../
-      dockerfile: Dockerfile.central
+      args:
+        COMPONENT: central
+        FEATURE: "-"
     depends_on:
       - central-proxy
     environment:
@@ -58,7 +60,9 @@ services:
   local:
     build:
       context: ../
-      dockerfile: Dockerfile.local
+      args:
+        COMPONENT: local
+        FEATURE: "-"
     depends_on:
       - central
     environment:
