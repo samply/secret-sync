@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use crate::auth::authentik::app::{check_app_result, compare_app_provider, generate_app_values};
 use crate::auth::authentik::group::{create_groups, post_group};
 use crate::auth::authentik::provider::{generate_provider_values, get_provider, get_provider_id};
@@ -10,6 +9,7 @@ use beam_lib::reqwest::{self, Error, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use shared::{OIDCConfig, SecretResult};
+use std::collections::HashSet;
 use tracing::debug;
 use tracing::field::debug;
 
@@ -92,7 +92,6 @@ async fn test_create_client() -> anyhow::Result<()> {
 
     Ok(())
 }
-
 
 #[ignore = "Requires setting up a authentik"]
 #[tokio::test]
@@ -198,7 +197,8 @@ async fn test_patch_provider() -> anyhow::Result<()> {
         ],
     };
     let pk_id = get_provider_id(name, &conf).await.unwrap();
-    let generated_provider = generate_provider_values(name, &client_config, "", &conf, None, HashSet::new()).await?;
+    let generated_provider =
+        generate_provider_values(name, &client_config, "", &conf, None, HashSet::new()).await?;
     debug!("{:#?}", generated_provider);
 
     let res = CLIENT
@@ -219,7 +219,6 @@ async fn test_patch_provider() -> anyhow::Result<()> {
     debug!("App now: {:#?}", get_app(name, &conf).await?);
     Ok(())
 }
-
 
 #[derive(Deserialize, Serialize, Debug)]
 struct Token {

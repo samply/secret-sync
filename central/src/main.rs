@@ -7,7 +7,7 @@ use futures::future::JoinAll;
 use gitlab::GitlabTokenProvider;
 use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
-use shared::{graceful_shutdown, SecretType, SecretRequest, SecretResult};
+use shared::{graceful_shutdown, SecretRequest, SecretResult, SecretType};
 use tracing::{info, warn};
 
 mod auth;
@@ -46,21 +46,27 @@ async fn main_loop() {
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
             Ok(tasks) => {
-                tasks.into_iter().map(|task| {
-                    let claimed = TaskResult {
-                        from: CONFIG.beam_id.clone(),
-                        to: vec![task.from.clone()],
-                        task: task.id,
-                        status: beam_lib::WorkStatus::Claimed, body: (), metadata: ().into()
-                    };
-                    tokio::spawn(handle_task(task));
-                    async move {
-                        if let Err(e) = BEAM_CLIENT.put_result(&claimed, &claimed.task).await {
-                            warn!("Failed to claim task from {}: {e}", claimed.to[0]);
+                tasks
+                    .into_iter()
+                    .map(|task| {
+                        let claimed = TaskResult {
+                            from: CONFIG.beam_id.clone(),
+                            to: vec![task.from.clone()],
+                            task: task.id,
+                            status: beam_lib::WorkStatus::Claimed,
+                            body: (),
+                            metadata: ().into(),
+                        };
+                        tokio::spawn(handle_task(task));
+                        async move {
+                            if let Err(e) = BEAM_CLIENT.put_result(&claimed, &claimed.task).await {
+                                warn!("Failed to claim task from {}: {e}", claimed.to[0]);
+                            }
                         }
-                    }
-                }).collect::<JoinAll<_>>().await;
-            },
+                    })
+                    .collect::<JoinAll<_>>()
+                    .await;
+            }
             Err(beam_lib::BeamError::ReqwestError(e)) if e.is_connect() => {
                 warn!(
                     "Failed to connect to beam proxy on {}. Retrying in 30s",
@@ -78,9 +84,12 @@ async fn main_loop() {
 
 pub async fn handle_task(task: TaskRequest<Vec<SecretRequest>>) {
     let from = task.from;
-    let results =
-        futures::future::join_all(task.body.into_iter().map(|t| handle_secret_request(t, &from)))
-            .await;
+    let results = futures::future::join_all(
+        task.body
+            .into_iter()
+            .map(|t| handle_secret_request(t, &from)),
+    )
+    .await;
     let result = BEAM_CLIENT
         .put_result(
             &TaskResult {
@@ -112,12 +121,12 @@ pub async fn handle_secret_request(
                 return Err("No OIDC provider configured!".into());
             };
             info!("This OIDCConfig is send: {:#?}", oidc_client_config);
-            oidc_provider.handle_secret_request(request.request_type, &oidc_client_config, from).await
+            oidc_provider
+                .handle_secret_request(request.request_type, &oidc_client_config, from)
+                .await
         }
         SecretType::GitLabProjectAccessToken(client_config) => {
-            let Some(gitlab_token_provider) =
-                GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref()
-            else {
+            let Some(gitlab_token_provider) = GITLAB_PROJECT_ACCESS_TOKEN_PROVIDER.as_ref() else {
                 return Err("No GitLab project access token provider configured!".into());
             };
             gitlab_token_provider

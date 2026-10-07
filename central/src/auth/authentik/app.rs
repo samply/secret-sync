@@ -6,7 +6,11 @@ use tracing::{debug, info};
 
 use crate::CLIENT;
 
-use super::{client_type, provider::{compare_provider, get_provider_id}, AuthentikConfig};
+use super::{
+    client_type,
+    provider::{compare_provider, get_provider_id},
+    AuthentikConfig,
+};
 
 pub fn generate_app_values(provider: i64, client_id: &str) -> Value {
     json!({
@@ -40,9 +44,11 @@ pub async fn update_app(
     client_id: &str,
     provider_pk: i64,
     app_name: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
-    let url = conf.authentik_url.join(&format!("api/v3/core/applications/{app_name}/"))?;
+    let url = conf
+        .authentik_url
+        .join(&format!("api/v3/core/applications/{app_name}/"))?;
     let st = CLIENT
         .patch(url)
         .bearer_auth(&conf.authentik_service_api_key)
@@ -56,7 +62,7 @@ pub async fn update_app(
 pub async fn check_app_result(
     client_id: &str,
     provider_pk: i64,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
     let res = generate_app(provider_pk, client_id, conf).await?;
     match res.status() {
@@ -77,9 +83,12 @@ pub async fn check_app_result(
                 update_app(
                     client_id,
                     provider_pk,
-                    conflicting_app["name"].as_str().expect("app name has to be present"),
+                    conflicting_app["name"]
+                        .as_str()
+                        .expect("app name has to be present"),
                     conf,
-                ).await
+                )
+                .await
             }
         }
         s => anyhow::bail!("Unexpected statuscode {s} while creating authentik client. {res:?}"),
@@ -88,7 +97,7 @@ pub async fn check_app_result(
 
 pub async fn get_app(
     client_id: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> reqwest::Result<serde_json::Value> {
     CLIENT
         .get(
@@ -108,7 +117,7 @@ pub async fn compare_app_provider(
     name: &str,
     oidc_client_config: &OIDCConfig,
     secret: &str,
-    conf: &AuthentikConfig
+    conf: &AuthentikConfig,
 ) -> anyhow::Result<bool> {
     let client_id = client_type(oidc_client_config, name);
     let provider_pk = get_provider_id(&client_id, conf).await;
@@ -116,7 +125,7 @@ pub async fn compare_app_provider(
         Some(pr_id) => {
             let app_res = get_app(&client_id, conf).await?;
             if app_configs_match(&app_res, &generate_app_values(pr_id, &client_id)) {
-                compare_provider(&client_id, name,oidc_client_config, conf, secret).await
+                compare_provider(&client_id, name, oidc_client_config, conf, secret).await
             } else {
                 Ok(false)
             }

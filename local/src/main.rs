@@ -9,8 +9,8 @@ use clap::Parser;
 use config::{Config, SecretArg};
 use futures::TryFutureExt;
 use once_cell::sync::Lazy;
+use shared::{graceful_shutdown, RequestType, SecretRequest, SecretResult, SecretType};
 use tracing::{info, warn};
-use shared::{graceful_shutdown, RequestType,SecretRequest, SecretResult, SecretType};
 
 mod cache;
 mod config;
