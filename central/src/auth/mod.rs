@@ -2,7 +2,7 @@ pub mod authentik;
 pub mod keycloak;
 
 pub fn generate_secret() -> String {
-    use rand::Rng;
+    use rand::RngExt;
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                             abcdefghijklmnopqrstuvwxyz\
                             0123456789";
