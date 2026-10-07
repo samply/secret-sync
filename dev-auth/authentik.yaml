@@ -4,7 +4,9 @@ services:
   local:
     build:
       context: ../
-      dockerfile: Dockerfile.local
+      args:
+        COMPONENT: local
+        FEATURE: "-"
     image: samply/secret-sync-local:latest
     environment:
       - PROXY_ID=proxy1.broker
@@ -23,7 +25,9 @@ services:
   central:
     build:
       context: ../
-      dockerfile: Dockerfile.central
+      args:
+        COMPONENT: central
+        FEATURE: "-"
     image: samply/secret-sync-central:latest
     depends_on:
       - worker
