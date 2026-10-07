@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub mod graceful_shutdown;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SecretType {
     OpenIdConnect(OIDCConfig),

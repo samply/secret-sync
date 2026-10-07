@@ -10,7 +10,7 @@ use config::{Config, SecretArg};
 use futures::TryFutureExt;
 use once_cell::sync::Lazy;
 use tracing::{info, warn};
-use shared::{RequestType, SecretRequest, SecretResult, SecretType};
+use shared::{graceful_shutdown, RequestType,SecretRequest, SecretResult, SecretType};
 
 mod cache;
 mod config;
@@ -26,6 +26,13 @@ pub static BEAM_CLIENT: Lazy<BeamClient> =
 #[tokio::main]
 async fn main() -> ExitCode {
     tracing_subscriber::fmt::init();
+    tokio::select! {
+        _ = graceful_shutdown::wait_for_signal() => ExitCode::FAILURE,
+        code = run() => code,
+    }
+}
+
+async fn run() -> ExitCode {
     let mut cache = Cache::open(&CONFIG.cache_path);
     let tasks: Vec<_> = CONFIG
         .secret_definitions
