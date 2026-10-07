@@ -7,7 +7,7 @@ use futures::future::JoinAll;
 use gitlab::GitlabTokenProvider;
 use icinga_client::IcingaClient;
 use once_cell::sync::Lazy;
-use shared::{SecretType, SecretRequest, SecretResult};
+use shared::{graceful_shutdown, SecretType, SecretRequest, SecretResult};
 use tracing::{info, warn};
 
 mod auth;
@@ -35,8 +35,14 @@ pub static ICINGA_CLIENT: Lazy<Option<IcingaClient>> = Lazy::new(try_create_icin
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    tokio::select! {
+        _ = graceful_shutdown::wait_for_signal() => {},
+        _ = main_loop() => {},
+    }
+}
+
+async fn main_loop() {
     let block_one = BlockingOptions::from_count(1);
-    // TODO: Fast shutdown
     loop {
         match BEAM_CLIENT.poll_pending_tasks(&block_one).await {
             Ok(tasks) => {
