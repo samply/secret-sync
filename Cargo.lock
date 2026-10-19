@@ -101,8 +101,8 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "beam-lib"
-version = "0.11.0"
-source = "git+https://github.com/samply/beam?branch=develop#12cb3337690acf838e075e40b52194114846e87c"
+version = "0.12.0"
+source = "git+https://github.com/samply/beam?branch=develop#46a07a8d948224d1889bc5162af142e357d7cb93"
 dependencies = [
  "reqwest",
  "serde",
